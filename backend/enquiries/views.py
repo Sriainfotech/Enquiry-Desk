@@ -1,8 +1,10 @@
+import os
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Count, Q, Sum
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -13,15 +15,29 @@ from rest_framework.views import APIView
 from config.pagination import DashboardRecentPagination, StandardResultsSetPagination
 from customers.models import Customer
 
-from .filters import EnquiryFilter
-from .models import Activity, DocumentSequence, Enquiry, Invoice, Order, Quotation, Requirement
+from .filters import ActivityFilter, EnquiryFilter
+from .models import (
+    Activity,
+    Enquiry,
+    Invoice,
+    InvoiceAttachment,
+    Order,
+    OrderAttachment,
+    Quotation,
+    QuotationAttachment,
+    Requirement,
+)
 from .serializers import (
     ActivitySerializer,
+    AttachmentSerializer,
+    AttachmentUploadSerializer,
     DashboardCustomerSerializer,
+    DOCUMENT_NUMBER_RE,
     EnquiryDetailSerializer,
     EnquiryListSerializer,
     EnquiryWriteSerializer,
     InvoiceSerializer,
+    MAX_DOCUMENT_NUMBER_LENGTH,
     OrderSerializer,
     QuotationSerializer,
     RecentActivitySerializer,
@@ -79,6 +95,7 @@ SEARCH_FIELDS = [
     "customer__company_name", "customer__customer_code", "customer__contact_person",
     "customer__mobile", "customer__email",
     "quotation__quotation_number", "order__order_number", "invoice__invoice_number",
+    "requirements__item",
 ]
 
 # Whitelisted so `ordering` can never be used to inject arbitrary column/SQL.
@@ -158,7 +175,7 @@ class EnquiryListCreateAPIView(APIView):
     def get(self, request):
         queryset = enquiry_base_queryset()
 
-        search = request.query_params.get("search", "").strip()
+        search = request.query_params.get("search", "").strip()[:100]
         if search:
             q = Q()
             for field in SEARCH_FIELDS:
@@ -285,17 +302,20 @@ class QuotationAPIView(APIView):
 
         value = sum((r.total for r in enquiry.requirements.all()), Decimal("0"))
         today = date.today()
+        # Tax is optional and never guessed — an omitted/blank value means "no tax",
+        # not an auto-computed rate. Only a value the user actually typed gets validated.
+        raw_tax = request.data.get("tax_amount")
         try:
-            tax_amount = parse_money(request.data.get("tax_amount", round(value * Decimal("0.18"), 2)), "Tax Amount")
+            tax_amount = parse_money(raw_tax, "Tax Amount") if raw_tax not in (None, "") else Decimal("0")
             valid_until = parse_required_date(request.data.get("valid_until") or (today + timedelta(days=15)), "Valid Until")
         except FieldValidationError as exc:
             return api_error(exc.message)
         if valid_until < today:
             return api_error("Valid Until cannot be earlier than today's Quotation Date.")
 
-        year = today.year
         with transaction.atomic():
-            quotation.quotation_number = f"QTN-{year}-{str(DocumentSequence.next_number(f'QTN-{year}')).zfill(4)}"
+            # No quotation_number here — the actual quotation is created in a separate
+            # application; the user can optionally record its number afterward via PATCH.
             quotation.quotation_date = today
             quotation.value = value
             quotation.tax_amount = tax_amount
@@ -322,7 +342,15 @@ class QuotationAPIView(APIView):
                     return api_error(f"Cannot move quotation from {quotation.status} to {data['status']}.")
                 enquiry_status, activity_label = transition
                 quotation.status = data["status"]
-                quotation.save(update_fields=["status"])
+                update_fields = ["status"]
+                # The guarded Prepared->Shared transition is the normal way this gets
+                # marked shared; the field also stays independently PATCH-able below
+                # for the (rarer) case sharing happened out-of-band and needs recording
+                # after the fact — but it can never be True while still Not Prepared.
+                if data["status"] == "Shared":
+                    quotation.quotation_shared = True
+                    update_fields.append("quotation_shared")
+                quotation.save(update_fields=update_fields)
                 enquiry.status = enquiry_status
                 enquiry.save(update_fields=["status"])
                 log_activity(enquiry, activity_label, user=request.user)
@@ -339,6 +367,167 @@ class QuotationAPIView(APIView):
                     quotation.save(update_fields=["total_value"])
 
         return Response(QuotationSerializer(quotation).data)
+
+
+# ---------------------------------------------------------------------------
+# Internal reference documents — Quotation/Order/Invoice each carry at most ONE
+# attached document (see AttachmentBase's OneToOneField subclasses in models.py).
+# A new upload replaces whatever was there before. One generic base view pair
+# handles all three; ATTACHMENT_META is the only per-kind configuration needed.
+# ---------------------------------------------------------------------------
+
+def safe_delete_file(file_field):
+    """attachment.file.delete() can raise on Windows if the file still has an open
+    handle (e.g. a download response that hasn't finished closing it yet) — a
+    transiently-locked file on disk is not worth failing the user's delete/replace
+    action over. The database row (the actual source of truth for "is there an
+    attachment") is removed either way; a storage-level failure here is best-effort."""
+    try:
+        file_field.delete(save=False)
+    except OSError:
+        pass
+
+
+ATTACHMENT_META = {
+    "quotation": {
+        "model": QuotationAttachment,
+        "added_label": "Quotation Attachment Added",
+        "replaced_label": "Quotation Attachment Replaced",
+        "removed_label": "Quotation Attachment Removed",
+    },
+    "order": {
+        "model": OrderAttachment,
+        "added_label": "PO/Order Document Added",
+        "replaced_label": "PO/Order Document Replaced",
+        "removed_label": "PO/Order Document Removed",
+    },
+    "invoice": {
+        "model": InvoiceAttachment,
+        "added_label": "Invoice Document Added",
+        "replaced_label": "Invoice Document Replaced",
+        "removed_label": "Invoice Document Removed",
+    },
+}
+
+
+class BaseAttachmentAPIView(APIView):
+    """GET/POST/DELETE /api/enquiries/<pk>/<kind>/attachment/ — metadata for the
+    single reference document attached to this enquiry's Quotation/Order/Invoice.
+    Subclasses just set `kind`. GET returns null when none exists yet (not a 404 —
+    "no attachment" is the normal, common state, not an error)."""
+
+    kind = None  # set by concrete subclasses: "quotation" | "order" | "invoice"
+
+    def get_enquiry(self, pk):
+        return get_object_or_404(Enquiry.objects.select_related("quotation", "order", "invoice"), pk=pk)
+
+    def get_parent(self, enquiry):
+        return getattr(enquiry, self.kind)
+
+    def get(self, request, pk):
+        meta = ATTACHMENT_META[self.kind]
+        parent = self.get_parent(self.get_enquiry(pk))
+        attachment = meta["model"].objects.select_related("uploaded_by").filter(**{self.kind: parent}).first()
+        return Response(AttachmentSerializer(attachment).data if attachment else None)
+
+    def post(self, request, pk):
+        enquiry = self.get_enquiry(pk)
+        parent = self.get_parent(enquiry)
+        meta = ATTACHMENT_META[self.kind]
+
+        f = request.FILES.get("file")
+        if not f:
+            return api_error("Select a file to upload.")
+
+        serializer = AttachmentUploadSerializer(data={"file": f})
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            existing = meta["model"].objects.filter(**{self.kind: parent}).first()
+            replacing = existing is not None
+            if existing:
+                safe_delete_file(existing.file)
+                existing.delete()
+            attachment = meta["model"].objects.create(
+                **{self.kind: parent},
+                file=f,
+                original_filename=os.path.basename(f.name)[:255],
+                file_size=f.size,
+                content_type=(f.content_type or "")[:100],
+                uploaded_by=request.user,
+            )
+            log_activity(
+                enquiry,
+                meta["replaced_label"] if replacing else meta["added_label"],
+                user=request.user,
+                description=attachment.original_filename,
+            )
+
+        return Response(AttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, pk):
+        enquiry = self.get_enquiry(pk)
+        parent = self.get_parent(enquiry)
+        meta = ATTACHMENT_META[self.kind]
+        attachment = meta["model"].objects.filter(**{self.kind: parent}).first()
+        if not attachment:
+            return api_error("There is no document to remove.", status.HTTP_404_NOT_FOUND)
+        filename = attachment.original_filename
+        with transaction.atomic():
+            safe_delete_file(attachment.file)
+            attachment.delete()
+            log_activity(enquiry, meta["removed_label"], user=request.user, description=filename)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class QuotationAttachmentAPIView(BaseAttachmentAPIView):
+    kind = "quotation"
+
+
+class OrderAttachmentAPIView(BaseAttachmentAPIView):
+    kind = "order"
+
+
+class InvoiceAttachmentAPIView(BaseAttachmentAPIView):
+    kind = "invoice"
+
+
+class BaseAttachmentDownloadAPIView(APIView):
+    """GET /api/enquiries/<pk>/<kind>/attachment/download/ — streams the file through
+    an authenticated view rather than a public MEDIA_URL path, so JWT auth (enforced by
+    the project-wide IsAuthenticated default) actually gates file access, not just the
+    metadata JSON. ?inline=1 requests an inline (View) disposition instead of a forced
+    download, for file types the browser can render directly (PDF/images)."""
+
+    kind = None
+
+    def get(self, request, pk):
+        meta = ATTACHMENT_META[self.kind]
+        enquiry = get_object_or_404(Enquiry.objects.select_related("quotation", "order", "invoice"), pk=pk)
+        parent = getattr(enquiry, self.kind)
+        attachment = meta["model"].objects.filter(**{self.kind: parent}).first()
+        if not attachment or not attachment.file or not attachment.file.storage.exists(attachment.file.name):
+            return api_error("The file for this document is no longer available.", status.HTTP_404_NOT_FOUND)
+
+        inline = str(request.query_params.get("inline", "")).lower() in ("1", "true", "yes")
+        return FileResponse(
+            attachment.file.open("rb"),
+            as_attachment=not inline,
+            filename=attachment.original_filename,
+            content_type=attachment.content_type or None,
+        )
+
+
+class QuotationAttachmentDownloadAPIView(BaseAttachmentDownloadAPIView):
+    kind = "quotation"
+
+
+class OrderAttachmentDownloadAPIView(BaseAttachmentDownloadAPIView):
+    kind = "order"
+
+
+class InvoiceAttachmentDownloadAPIView(BaseAttachmentDownloadAPIView):
+    kind = "invoice"
 
 
 # ---------------------------------------------------------------------------
@@ -376,9 +565,13 @@ class OrderAPIView(APIView):
             return api_error("An order can only be created once the quotation has been accepted.", status.HTTP_409_CONFLICT)
 
         today = date.today()
+        if today < enquiry.enquiry_date:
+            return api_error("Order Date cannot be earlier than the Enquiry Date.")
         po_number = (request.data.get("po_number") or "").strip()
-        if len(po_number) > 50:
-            return api_error("PO Number cannot exceed 50 characters.")
+        if len(po_number) > MAX_DOCUMENT_NUMBER_LENGTH:
+            return api_error(f"PO Number cannot exceed {MAX_DOCUMENT_NUMBER_LENGTH} characters.")
+        if po_number and not DOCUMENT_NUMBER_RE.match(po_number):
+            return api_error("PO Number can only contain letters, numbers, hyphens, slashes and underscores.")
         try:
             po_date = parse_required_date(request.data.get("po_date") or today, "PO Date")
         except FieldValidationError as exc:
@@ -386,9 +579,9 @@ class OrderAPIView(APIView):
         if po_date > today:
             return api_error("PO Date cannot be later than the Order Date.")
 
-        year = today.year
         with transaction.atomic():
-            order.order_number = f"ORD-{year}-{str(DocumentSequence.next_number(f'ORD-{year}')).zfill(4)}"
+            # No order_number here — the actual order/PO is created in a separate
+            # application; the user can optionally record its number afterward via PATCH.
             order.order_date = today
             order.po_number = po_number
             order.po_date = po_date
@@ -450,9 +643,9 @@ class InvoiceAPIView(APIView):
             return api_error("An invoice can only be generated once the order has been confirmed.", status.HTTP_409_CONFLICT)
 
         today = date.today()
-        year = today.year
         with transaction.atomic():
-            invoice.invoice_number = f"INV-{year}-{str(DocumentSequence.next_number(f'INV-{year}')).zfill(4)}"
+            # No invoice_number here — the actual invoice is created in a separate
+            # billing system; the user can optionally record its number afterward via PATCH.
             invoice.invoice_date = today
             invoice.value = enquiry.order.value
             invoice.status = "Generated"
@@ -479,6 +672,11 @@ class InvoiceAPIView(APIView):
 
             if "payment_status" in data and data["payment_status"] != invoice.payment_status:
                 new_payment_status = data["payment_status"]
+                valid_payment_statuses = dict(Invoice.PAYMENT_STATUS_CHOICES)
+                if new_payment_status not in valid_payment_statuses:
+                    return api_error(
+                        f"Payment Status must be one of: {', '.join(valid_payment_statuses)}."
+                    )
                 invoice.payment_status = new_payment_status
                 if new_payment_status == "Paid":
                     invoice.payment_date = date.today()
@@ -628,15 +826,46 @@ class DashboardRecentEnquiriesAPIView(APIView):
 
 class DashboardRecentActivityAPIView(APIView):
     """GET /api/enquiries/dashboard/recent-activity/?limit= — latest activity across
-    every enquiry (capped at 50), for the dashboard's Recent Activity widget."""
+    every enquiry (default 8, capped at 50), for the dashboard's compact preview widget.
+    The full, paginated/searchable/filterable log lives at ActivityHistoryAPIView below."""
 
     def get(self, request):
         try:
-            limit = min(max(int(request.query_params.get("limit", 10)), 1), 50)
+            limit = min(max(int(request.query_params.get("limit", 8)), 1), 50)
         except (TypeError, ValueError):
-            limit = 10
+            limit = 8
         activities = (
             Activity.objects.select_related("enquiry", "enquiry__customer", "created_by")
             .order_by("-created_at")[:limit]
         )
-        return Response(RecentActivitySerializer(activities, many=True).data)
+        return Response({"results": RecentActivitySerializer(activities, many=True).data})
+
+
+class ActivityHistoryAPIView(APIView):
+    """GET /api/enquiries/activity/ — the complete activity audit log: paginated,
+    searchable, filterable and sortable. Never loads the full table into memory."""
+
+    def get(self, request):
+        queryset = Activity.objects.select_related("enquiry", "enquiry__customer", "created_by")
+
+        search = request.query_params.get("search", "").strip()[:100]
+        if search:
+            queryset = queryset.filter(
+                Q(enquiry__enquiry_number__icontains=search)
+                | Q(enquiry__customer__company_name__icontains=search)
+                | Q(action__icontains=search)
+                | Q(description__icontains=search)
+                | Q(created_by__username__icontains=search)
+                | Q(created_by__first_name__icontains=search)
+                | Q(created_by__last_name__icontains=search)
+            )
+
+        queryset = ActivityFilter(request.query_params, queryset=queryset).qs.distinct()
+
+        ordering = "created_at" if request.query_params.get("ordering") == "created_at" else "-created_at"
+        queryset = queryset.order_by(ordering, "-id")
+
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = RecentActivitySerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)

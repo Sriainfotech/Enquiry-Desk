@@ -4,23 +4,33 @@ import { generateInvoice, patchInvoice } from "../../api/enquiries";
 import { useToast } from "../../hooks/useToast";
 import { fieldErrorsFrom, messageFrom } from "../../utils/apiError";
 import { formatCurrency, formatDate } from "../../utils/format";
-import Code from "../Code";
+import * as v from "../../utils/validators";
 import EmptyState from "../EmptyState";
 import FormField from "../FormField";
 import SearchableSelect from "../SearchableSelect";
 import StatusBadge from "../StatusBadge";
-import { btnDanger, btnPrimary, cardCls, inputCls, inputErrCls, labelCls, sectionTitleCls, textareaCls } from "../ui";
+import { btnDanger, btnPrimary, cardCls, inputCls, inputErrCls, sectionTitleCls, textareaCls } from "../ui";
 import { PAYMENT_STATUSES } from "../../constants";
+import InternalDocumentAttachment from "./InternalDocumentAttachment";
+
+// Full literal strings (not template-built) so Tailwind's JIT scanner can find them.
+const FIELD_SPAN = "col-span-6 sm:col-span-4 lg:col-span-3";
+const subHeadingCls = "text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3";
+// Same height/padding/radius as a real input so read-only (system-set/calculated) values
+// line up exactly with editable fields in the grid — just visually muted, not a broken input.
+const readOnlyCls = "w-full h-[38px] px-3 border border-slate-200 rounded-md bg-slate-50 text-sm text-slate-700 flex items-center";
 
 export default function InvoiceTab({ enquiry, onChanged }) {
   const { showToast } = useToast();
   const inv = enquiry.invoice;
   const o = enquiry.order;
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState({ due_date: inv.due_date || "", remarks: inv.remarks || "" });
+  const [draft, setDraft] = useState({ invoice_number: inv.invoice_number || "", due_date: inv.due_date || "", remarks: inv.remarks || "" });
   const [errors, setErrors] = useState({});
 
-  useEffect(() => setDraft({ due_date: inv.due_date || "", remarks: inv.remarks || "" }), [inv.due_date, inv.remarks]);
+  useEffect(() => {
+    setDraft({ invoice_number: inv.invoice_number || "", due_date: inv.due_date || "", remarks: inv.remarks || "" });
+  }, [inv.invoice_number, inv.due_date, inv.remarks]);
 
   const canGenerate = ["Confirmed", "Partially Confirmed", "Completed"].includes(o.status) && inv.status === "Not Generated";
 
@@ -57,8 +67,11 @@ export default function InvoiceTab({ enquiry, onChanged }) {
     <div className={`${cardCls} p-5`}>
       <div className="flex items-center justify-between mb-1">
         <h3 className={sectionTitleCls + " border-none mb-0 pb-0"}><Receipt size={15} /> Invoice</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Invoice Generated: <span className={`font-semibold ${generatedYesNo === "Yes" ? "text-green-600" : "text-slate-500"}`}>{generatedYesNo}</span></span>
+        <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-lg pl-3 pr-2.5 py-1.5">
+          <div className="text-right leading-tight">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Generated</p>
+            <p className={`text-xs font-semibold ${generatedYesNo === "Yes" ? "text-green-600" : "text-slate-500"}`}>{generatedYesNo}</p>
+          </div>
           <StatusBadge status={inv.status} type="invoice" />
         </div>
       </div>
@@ -73,11 +86,32 @@ export default function InvoiceTab({ enquiry, onChanged }) {
         />
       ) : (
         <>
-          <div className="flex flex-wrap gap-4 mb-5">
-            <div className="w-[190px]"><p className={labelCls}>Invoice Number</p><Code>{inv.invoice_number}</Code></div>
-            <div className="w-[160px]"><p className={labelCls}>Invoice Date</p><p className="text-sm text-slate-800">{formatDate(inv.invoice_date)}</p></div>
-            <div className="w-[160px]"><p className={labelCls}>Invoice Value</p><p className="text-sm font-bold text-slate-900 h-[38px] flex items-center">{formatCurrency(inv.value)}</p></div>
-            <FormField className="w-[180px]" label="Due Date" error={errors.due_date}>
+          <p className={subHeadingCls}>Invoice Information</p>
+          <div className="grid grid-cols-12 gap-x-5 gap-y-4 mb-6">
+            <FormField
+              className={FIELD_SPAN} label="Invoice Number (Optional)" error={errors.invoice_number}
+              hint="Optional — enter the invoice number from your external billing system."
+            >
+              <input
+                className={errors.invoice_number ? inputErrCls : inputCls} value={draft.invoice_number} maxLength={30}
+                placeholder="Not provided"
+                onChange={(e) => setDraft((d) => ({ ...d, invoice_number: e.target.value }))}
+                onBlur={(e) => {
+                  const next = e.target.value.trim();
+                  if (next === (inv.invoice_number || "")) return;
+                  const err = v.documentNumber(next, "Invoice Number");
+                  if (err) { setErrors((prev) => ({ ...prev, invoice_number: err })); return; }
+                  commitField("invoice_number", next || null);
+                }}
+              />
+            </FormField>
+            <FormField className={FIELD_SPAN} label="Invoice Date">
+              <div className={readOnlyCls}>{formatDate(inv.invoice_date)}</div>
+            </FormField>
+            <FormField className={FIELD_SPAN} label="Invoice Value">
+              <div className={readOnlyCls + " font-semibold text-slate-900"}>{formatCurrency(inv.value)}</div>
+            </FormField>
+            <FormField className={FIELD_SPAN} label="Due Date" error={errors.due_date}>
               <input
                 type="date" className={errors.due_date ? inputErrCls : inputCls} value={draft.due_date}
                 onChange={(e) => setDraft((d) => ({ ...d, due_date: e.target.value }))}
@@ -85,25 +119,31 @@ export default function InvoiceTab({ enquiry, onChanged }) {
                 min={inv.invoice_date || undefined}
               />
             </FormField>
-            <div className="w-[190px]">
-              <p className={labelCls}>Payment Status</p>
+            <FormField className={FIELD_SPAN} label="Payment Status">
               <SearchableSelect value={inv.payment_status} onChange={setPaymentStatus} options={PAYMENT_STATUSES} clearable={false} searchable={false} />
-            </div>
-            <div className="w-[160px]"><p className={labelCls}>Payment Date</p><p className="text-sm text-slate-800 h-[38px] flex items-center">{formatDate(inv.payment_date)}</p></div>
+            </FormField>
+            <FormField className={FIELD_SPAN} label="Payment Date">
+              <div className={readOnlyCls}>{inv.payment_date ? formatDate(inv.payment_date) : "—"}</div>
+            </FormField>
           </div>
-          <FormField label="Remarks" error={errors.remarks} counter={{ value: draft.remarks.length, max: 500 }}>
-            <textarea
-              className={textareaCls} rows={2} maxLength={500} value={draft.remarks}
-              onChange={(e) => setDraft((d) => ({ ...d, remarks: e.target.value }))}
-              onBlur={(e) => e.target.value !== inv.remarks && commitField("remarks", e.target.value)}
-            />
-          </FormField>
 
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+          <div className="pt-5 mt-1 border-t border-slate-100">
+            <FormField label="Invoice Remarks" error={errors.remarks} counter={{ value: draft.remarks.length, max: 500 }}>
+              <textarea
+                className={textareaCls} rows={3} maxLength={500} value={draft.remarks}
+                onChange={(e) => setDraft((d) => ({ ...d, remarks: e.target.value }))}
+                onBlur={(e) => e.target.value !== inv.remarks && commitField("remarks", e.target.value)}
+              />
+            </FormField>
+          </div>
+
+          <InternalDocumentAttachment entityType="invoice" enquiryId={enquiry.id} />
+
+          <div className="flex flex-wrap items-center justify-end gap-2 mt-5 pt-4 border-t border-slate-100">
             {inv.status === "Generated" && (
               <>
-                <button className={btnPrimary} disabled={busy} onClick={() => setInvoiceStatus("Sent", "Invoice Marked as Sent")}><ArrowRight size={14} /> Mark as Sent</button>
                 <button className={btnDanger} disabled={busy} onClick={() => setInvoiceStatus("Cancelled", "Invoice Cancelled")}><XCircle size={14} /> Cancel Invoice</button>
+                <button className={btnPrimary} disabled={busy} onClick={() => setInvoiceStatus("Sent", "Invoice Marked as Sent")}><ArrowRight size={14} /> Mark as Sent</button>
               </>
             )}
             {inv.status === "Sent" && (

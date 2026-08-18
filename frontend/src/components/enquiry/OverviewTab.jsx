@@ -28,11 +28,11 @@ export default function OverviewTab({ enquiry, customer, startEdit, onChanged })
 
   async function save() {
     const errs = {};
-    const salesErr = v.maxLen(draft.sales_person, 50, "Sales person");
+    const salesErr = v.salesPerson(draft.sales_person);
     if (salesErr) errs.sales_person = salesErr;
     const remarksErr = v.maxLen(draft.remarks, 500, "Remarks");
     if (remarksErr) errs.remarks = remarksErr;
-    const dateErr = v.dateNotBefore(draft.expected_closing_date, enquiry.enquiry_date, "Expected Closing Date", "Enquiry Date");
+    const dateErr = v.dateNotBefore(draft.expected_closing_date, enquiry.enquiry_date, "Expected Closing Date", "Date of Enquiry");
     if (dateErr) errs.expected_closing_date = dateErr;
     setErrors(errs);
     if (Object.keys(errs).length) return;
@@ -77,7 +77,7 @@ export default function OverviewTab({ enquiry, customer, startEdit, onChanged })
             <div className="flex justify-between"><span className="text-slate-500">Enquiry Source</span><span className="text-slate-800">{enquiry.enquiry_source || "—"}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Priority</span><span className="text-slate-800">{enquiry.priority}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Sales Person</span><span className="text-slate-800">{enquiry.sales_person || "—"}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Enquiry Date</span><span className="text-slate-800">{formatDate(enquiry.enquiry_date)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Date of Enquiry</span><span className="text-slate-800">{formatDate(enquiry.enquiry_date)}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Expected Closing</span><span className="text-slate-800">{formatDate(enquiry.expected_closing_date)}</span></div>
             {enquiry.remarks && <div className="pt-2 border-t border-slate-100"><span className="text-slate-500 text-xs">Remarks</span><p className="text-slate-700 mt-1">{enquiry.remarks}</p></div>}
           </div>

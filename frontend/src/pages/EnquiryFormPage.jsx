@@ -9,12 +9,20 @@ import PageHeader from "../components/PageHeader";
 import QuickAddCustomerModal from "../components/QuickAddCustomerModal";
 import RequirementsEditor, { newRequirementRow } from "../components/RequirementsEditor";
 import SearchableSelect from "../components/SearchableSelect";
-import { btnGhost, btnGhostSm, btnPrimary, btnSecondary, cardCls, inputCls, sectionTitleCls, textareaCls } from "../components/ui";
+import { btnGhost, btnGhostSm, btnPrimary, btnSecondary, cardCls, inputCls, inputErrCls, sectionTitleCls, textareaCls } from "../components/ui";
 import { useToast } from "../hooks/useToast";
 import { fieldErrorsFrom, messageFrom } from "../utils/apiError";
 import { todayStr } from "../utils/format";
 import * as v from "../utils/validators";
 import { BUSINESS_LINES, ENQUIRY_SOURCES, PRIORITIES, SALES_PERSONS } from "../constants";
+
+const FORM_MAX_WIDTH = "max-w-[1400px]";
+// Full literal strings (not template-built) so Tailwind's JIT scanner can find them.
+const SPAN = {
+  3: "col-span-12 sm:col-span-6 lg:col-span-3",
+  6: "col-span-12 sm:col-span-6 lg:col-span-6",
+};
+const g = (lg) => SPAN[lg];
 
 export default function EnquiryFormPage() {
   const navigate = useNavigate();
@@ -39,18 +47,20 @@ export default function EnquiryFormPage() {
     const errs = {};
     if (!customer) errs.customer = "Select a customer before saving the enquiry.";
     if (!businessLine) errs.businessLine = "Business line is required.";
-    const salesPersonErr = v.maxLen(salesPerson, 50, "Sales person");
+    const salesPersonErr = v.salesPerson(salesPerson);
     if (salesPersonErr) errs.salesPerson = salesPersonErr;
     const remarksErr = v.maxLen(remarks, 500, "Remarks");
     if (remarksErr) errs.remarks = remarksErr;
-    const dateErr = v.dateNotBefore(expectedClosingDate, enquiryDate, "Expected Closing Date", "Enquiry Date");
+    const enquiryDateErr = v.enquiryDate(enquiryDate);
+    if (enquiryDateErr) errs.enquiryDate = enquiryDateErr;
+    const dateErr = v.dateNotBefore(expectedClosingDate, enquiryDate, "Expected Closing Date", "Date of Enquiry");
     if (dateErr) errs.expectedClosingDate = dateErr;
     if (requirements.length === 0) errs.requirements = "Add at least one requirement.";
     const rowErrs = {};
     requirements.forEach((r) => {
       const e = {};
       if (v.requirementItem(r.item)) e.item = true;
-      if (v.quantity(r.quantity)) e.quantity = true;
+      if (v.quantity(r.quantity, r.unit)) e.quantity = true;
       if (v.unitPrice(r.unit_price)) e.unit_price = true;
       if (Object.keys(e).length) rowErrs[r.id ?? r.localId] = e;
     });
@@ -94,10 +104,10 @@ export default function EnquiryFormPage() {
       <button onClick={() => navigate("/enquiries")} className={btnGhost + " mb-4"}><ArrowLeft size={15} /> Back to Enquiries</button>
       <PageHeader title="New Enquiry" subtitle="The enquiry number is generated automatically on save" />
 
-      <div className="space-y-4 max-w-4xl pb-28">
-        <div className={`${cardCls} p-4`}>
+      <div className={`space-y-4 ${FORM_MAX_WIDTH} mx-auto`}>
+        <div className={`${cardCls} p-5`}>
           <h3 className={sectionTitleCls}><Building2 size={15} /> Customer</h3>
-          <FormField className="w-full sm:w-[420px]" label="Customer" required error={errors.customer}>
+          <FormField className="w-full max-w-[420px]" label="Customer" required error={errors.customer}>
             <CustomerCombobox
               selectedCustomer={customer}
               onSelect={setCustomer}
@@ -111,7 +121,7 @@ export default function EnquiryFormPage() {
           )}
 
           {customer && (
-            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 bg-slate-50 border border-slate-100 rounded-md px-4 py-2.5 text-sm">
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 bg-slate-50 border border-slate-100 rounded-md px-4 py-2.5 text-sm max-w-[720px]">
               <span className="font-semibold text-slate-800">{customer.company_name}</span>
               <span className="flex items-center gap-1.5 text-slate-500"><User size={12} /> {customer.contact_person}</span>
               <span className="flex items-center gap-1.5 text-slate-500"><Phone size={12} /> {customer.mobile}</span>
@@ -120,44 +130,44 @@ export default function EnquiryFormPage() {
           )}
         </div>
 
-        <div className={`${cardCls} p-4`}>
+        <div className={`${cardCls} p-5`}>
           <h3 className={sectionTitleCls}><ClipboardList size={15} /> Enquiry Information</h3>
-          <div className="flex flex-wrap gap-4">
-            <FormField className="w-full sm:w-[190px]" label="Enquiry Date">
-              <input type="date" className={inputCls} value={enquiryDate} onChange={(e) => setEnquiryDate(e.target.value)} />
+          <div className="grid grid-cols-12 gap-4">
+            <FormField className={g(3)} label="Date of Enquiry" error={errors.enquiryDate}>
+              <input type="date" className={errors.enquiryDate ? inputErrCls : inputCls} max={todayStr()} value={enquiryDate} onChange={(e) => setEnquiryDate(e.target.value)} />
             </FormField>
-            <FormField className="w-full sm:w-[260px]" label="Business Line" required error={errors.businessLine}>
+            <FormField className={g(3)} label="Business Line" required error={errors.businessLine}>
               <SearchableSelect value={businessLine} onChange={setBusinessLine} placeholder="Search business line…" options={BUSINESS_LINES} error={!!errors.businessLine} />
             </FormField>
-            <FormField className="w-full sm:w-[220px]" label="Enquiry Source">
+            <FormField className={g(3)} label="Enquiry Source">
               <SearchableSelect value={enquirySource} onChange={setEnquirySource} placeholder="Select source" options={ENQUIRY_SOURCES} />
             </FormField>
-            <FormField className="w-full sm:w-[160px]" label="Priority">
+            <FormField className={g(3)} label="Priority">
               <SearchableSelect value={priority} onChange={setPriority} placeholder="Select priority" options={PRIORITIES} clearable={false} />
             </FormField>
-            <FormField className="w-full sm:w-[230px]" label="Sales Person" error={errors.salesPerson} counter={{ value: salesPerson.length, max: 50 }}>
+            <FormField className={g(6)} label="Sales Person" error={errors.salesPerson} counter={{ value: salesPerson.length, max: 50 }}>
               <input className={inputCls} value={salesPerson} onChange={(e) => setSalesPerson(e.target.value)} placeholder="Enter sales person name" list="sales-person-suggestions" maxLength={50} />
               <datalist id="sales-person-suggestions">
                 {SALES_PERSONS.map((p) => <option key={p} value={p} />)}
               </datalist>
             </FormField>
-            <FormField className="w-full sm:w-[190px]" label="Expected Closing Date" error={errors.expectedClosingDate}>
+            <FormField className={g(6)} label="Expected Closing Date" error={errors.expectedClosingDate}>
               <input type="date" className={inputCls} value={expectedClosingDate} onChange={(e) => setExpectedClosingDate(e.target.value)} min={enquiryDate} />
             </FormField>
-            <FormField className="w-full" label="Enquiry Remarks" error={errors.remarks} counter={{ value: remarks.length, max: 500 }}>
+            <FormField className="col-span-12" label="Enquiry Remarks" error={errors.remarks} counter={{ value: remarks.length, max: 500 }}>
               <textarea className={textareaCls} rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Add any additional context for this enquiry" maxLength={500} />
             </FormField>
           </div>
         </div>
 
-        <div className={`${cardCls} p-4`}>
+        <div className={`${cardCls} p-5`}>
           <h3 className={sectionTitleCls}><Package size={15} /> Requirements</h3>
           {errors.requirements && <p className="text-xs text-red-500 mb-2 flex items-center gap-1"><AlertCircle size={12} /> {errors.requirements}</p>}
           <RequirementsEditor requirements={requirements} onChange={setRequirements} rowErrors={errors.rowErrs} />
         </div>
       </div>
 
-      <div className="sticky bottom-0 -mx-6 lg:-mx-8 px-6 lg:px-8 py-3 bg-white/95 backdrop-blur-sm border-t border-slate-200 flex justify-end gap-2 max-w-4xl shadow-[0_-2px_6px_rgba(15,23,42,0.04)]">
+      <div className={`${FORM_MAX_WIDTH} mx-auto mt-5 pt-4 border-t border-slate-200 flex justify-end gap-2`}>
         <button className={btnSecondary} onClick={() => navigate("/enquiries")}>Cancel</button>
         <button className={btnPrimary} onClick={handleSubmit} disabled={submitting}>
           {submitting ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Create Enquiry

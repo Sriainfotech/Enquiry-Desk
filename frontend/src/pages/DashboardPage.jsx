@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle, ArrowRight, Building2, CheckCircle2, ClipboardList, Clock, Eye, FileText,
   Package, Pencil, Plus, Receipt, TrendingDown, TrendingUp, Users, Wallet,
@@ -15,7 +15,25 @@ import Skeleton from "../components/Skeleton";
 import StatusBadge from "../components/StatusBadge";
 import { btnGhostSm, btnPrimary, cardCls, tableHeadCls } from "../components/ui";
 import { messageFrom } from "../utils/apiError";
-import { formatCurrency, formatDate, formatDateTime, todayStr } from "../utils/format";
+import { activityMetaFor } from "../utils/activityMeta";
+import { formatCurrency, formatDate, formatRelativeTime, todayStr } from "../utils/format";
+
+const DASHBOARD_ACTIVITY_LIMIT = 8;
+
+// Consecutive activities that belong to the same enquiry are visually clustered under
+// one header — a presentation grouping only, every individual record still exists as-is.
+function groupActivities(items) {
+  const groups = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (last && last.enquiry === item.enquiry) {
+      last.items.push(item);
+    } else {
+      groups.push({ enquiry: item.enquiry, enquiry_number: item.enquiry_number, customer_name: item.customer_name, items: [item] });
+    }
+  }
+  return groups;
+}
 
 const PIPELINE_META = {
   "New Enquiry": { icon: ClipboardList, color: "bg-slate-100 text-slate-600" },
@@ -100,11 +118,13 @@ export default function DashboardPage() {
   const loadActivity = useCallback(() => {
     setActivityLoading(true);
     setActivityError("");
-    fetchDashboardRecentActivity(10)
+    fetchDashboardRecentActivity(DASHBOARD_ACTIVITY_LIMIT)
       .then(setActivity)
       .catch((err) => setActivityError(messageFrom(err)))
       .finally(() => setActivityLoading(false));
   }, []);
+
+  const activityGroups = useMemo(() => groupActivities(activity), [activity]);
 
   useEffect(() => { loadSummary(); }, [loadSummary]);
   useEffect(() => { loadEnquiries(); }, [loadEnquiries]);
@@ -302,32 +322,41 @@ export default function DashboardPage() {
       </div>
 
       <div className={cardCls}>
-        <div className="px-5 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
           <h3 className="text-[13px] font-semibold text-slate-800 uppercase tracking-wide">Recent Activity</h3>
+          <button onClick={() => navigate("/enquiries/activity")} className="inline-flex items-center gap-1 text-xs text-teal-600 font-medium hover:underline">
+            View All <ArrowRight size={12} />
+          </button>
         </div>
         {activityError ? (
           <SectionError message={`Unable to load recent activity. ${activityError}`} onRetry={loadActivity} />
         ) : activityLoading ? (
-          <div className="p-5 space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="w-full h-8" />)}
+          <div className="p-4 space-y-2.5">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="w-full h-7" />)}
           </div>
         ) : activity.length === 0 ? (
-          <EmptyState icon={Clock} title="No recent activity" message="Actions taken on enquiries will show up here." />
+          <EmptyState icon={Clock} title="No recent activity" message="Once an enquiry/customer workflow starts, activities will appear here." />
         ) : (
           <div className="divide-y divide-slate-50">
-            {activity.map((a) => (
-              <div key={a.id} className="flex items-start gap-3 px-5 py-3">
-                <div className="w-7 h-7 rounded-full bg-teal-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Clock size={13} className="text-teal-600" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-800">
-                    <button onClick={() => navigate(`/enquiries/${a.enquiry}`)} className="font-medium font-mono text-teal-700 hover:underline">{a.enquiry_number}</button>
-                    {" "}{a.action}{a.customer_name && <span className="text-slate-500"> · {a.customer_name}</span>}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    {formatDateTime(a.created_at)}{a.user_name && ` · ${a.user_name}`}
-                  </p>
+            {activityGroups.map((group, gi) => (
+              <div key={`${group.enquiry}-${gi}`} className="px-5 py-2.5">
+                <button onClick={() => navigate(`/enquiries/${group.enquiry}`)} className="text-[11px] text-slate-500 hover:text-teal-700 font-medium mb-1.5">
+                  <span className="font-mono">{group.enquiry_number}</span>{group.customer_name && ` · ${group.customer_name}`}
+                </button>
+                <div className="space-y-1.5">
+                  {group.items.map((a) => {
+                    const meta = activityMetaFor(a.action);
+                    const Icon = meta.icon;
+                    return (
+                      <div key={a.id} className="flex items-center gap-2.5">
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${meta.color}`}>
+                          <Icon size={11} />
+                        </div>
+                        <p className="text-sm text-slate-800 truncate flex-1">{a.action}</p>
+                        <p className="text-[11px] text-slate-400 flex-shrink-0">{formatRelativeTime(a.created_at)}{a.created_by_name && ` · ${a.created_by_name}`}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}

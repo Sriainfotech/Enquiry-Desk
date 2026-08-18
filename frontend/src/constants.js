@@ -3,7 +3,7 @@
 
 export const BUSINESS_LINES = [
   "Laptop Sales", "Desktop Sales", "Networking", "CCTV", "Software Services",
-  "Cloud Services", "AMC", "IT Support", "Hardware", "Cyber Security",
+  "Cloud Services", "AMC", "IT Support", "Hardware", "Cyber Security", "Other",
 ];
 export const ENQUIRY_SOURCES = [
   "Website", "Referral", "Cold Call", "Email", "Phone", "Walk-in",
@@ -39,6 +39,11 @@ export const INDIAN_STATES = [
   "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir", "Ladakh",
   "Lakshadweep", "Puducherry",
 ];
+
+// Mirrors ALLOWED_ATTACHMENT_EXTENSIONS / MAX_ATTACHMENT_SIZE_MB in
+// backend/enquiries/serializers.py — the backend is authoritative either way.
+export const ATTACHMENT_EXTENSIONS = ["pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png"];
+export const MAX_ATTACHMENT_SIZE_MB = 10;
 
 export const PAGE_SIZE = 20;
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];

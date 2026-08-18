@@ -14,6 +14,7 @@ import CustomerDetailPage from "./pages/CustomerDetailPage";
 import EnquiriesListPage from "./pages/EnquiriesListPage";
 import EnquiryFormPage from "./pages/EnquiryFormPage";
 import EnquiryDetailPage from "./pages/EnquiryDetailPage";
+import ActivityHistoryPage from "./pages/ActivityHistoryPage";
 
 function FullScreenLoader() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
                 <Route path="customers/:id" element={<CustomerDetailPage />} />
                 <Route path="enquiries" element={<EnquiriesListPage />} />
                 <Route path="enquiries/new" element={<EnquiryFormPage />} />
+                <Route path="enquiries/activity" element={<ActivityHistoryPage />} />
                 <Route path="enquiries/:id" element={<EnquiryDetailPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

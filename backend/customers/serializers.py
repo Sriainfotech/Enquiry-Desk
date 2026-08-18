@@ -6,13 +6,40 @@ from rest_framework import serializers
 
 from .models import Customer
 
-COMPANY_NAME_RE = re.compile(r"^[A-Za-z0-9&.,()\-\s]+$")
-PERSON_NAME_RE = re.compile(r"^[A-Za-z .'\-]+$")
-CITY_RE = re.compile(r"^[A-Za-z .'\-]+$")
+# Business names legitimately contain digits and punctuation ("3M India", "24/7 Solutions",
+# "H&R Block") — must start with a letter/digit so "   " and pure-punctuation strings fail.
+COMPANY_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,&'()/-]*$")
+# Human names: no digits, must start with a letter (rejects "John123", "12345").
+PERSON_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z .'-]*$")
+# Job titles legitimately contain digits/ampersands ("HR & Admin", "Level 2 Manager").
+DESIGNATION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&'-]*$")
+CITY_RE = re.compile(r"^[A-Za-z .'-]+$")
+# Street addresses legitimately contain digits, slashes and "#" ("Flat #302, Road No. 10").
+ADDRESS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,/#()-]*$")
 MOBILE_RE = re.compile(r"^[6-9][0-9]{9}$")
-PINCODE_RE = re.compile(r"^[0-9]{6}$")
+# Indian PIN codes never start with 0.
+PINCODE_RE = re.compile(r"^[1-9][0-9]{5}$")
 GST_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+HTML_TAG_RE = re.compile(r"<[^>]*>")
+# Control characters other than tab/newline/carriage-return, which are legitimate in
+# multi-line free text (Notes) — the NUL byte is covered by this range too.
+CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
+
+
+def _validate_free_text(value, label):
+    """Shared safety net for multiline/free-text fields — still allows normal business
+    punctuation and line breaks, but blocks HTML tags and non-printable control
+    characters that have no legitimate business use here."""
+    if HTML_TAG_RE.search(value):
+        raise serializers.ValidationError(f"{label} cannot contain HTML tags.")
+    if CONTROL_CHAR_RE.search(value):
+        raise serializers.ValidationError(f"{label} contains invalid control characters.")
+    return value
+
+
+def _collapse_spaces(value):
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def _validate_url(value):
@@ -58,7 +85,7 @@ class CustomerSerializer(serializers.ModelSerializer):
     # ---- individual field rules -------------------------------------------------
 
     def validate_company_name(self, value):
-        value = value.strip()
+        value = _collapse_spaces(value)
         if len(value) < 2:
             raise serializers.ValidationError("Company name must be at least 2 characters.")
         if not COMPANY_NAME_RE.match(value):
@@ -66,15 +93,18 @@ class CustomerSerializer(serializers.ModelSerializer):
         return value
 
     def validate_contact_person(self, value):
-        value = value.strip()
+        value = _collapse_spaces(value)
         if len(value) < 2:
             raise serializers.ValidationError("Contact person must be at least 2 characters.")
         if not PERSON_NAME_RE.match(value):
-            raise serializers.ValidationError("Contact person can only contain letters, spaces, apostrophes and hyphens.")
+            raise serializers.ValidationError("Contact person can only contain letters, spaces, apostrophes and hyphens — no numbers.")
         return value
 
     def validate_designation(self, value):
-        return value.strip()
+        value = _collapse_spaces(value)
+        if value and not DESIGNATION_RE.match(value):
+            raise serializers.ValidationError("Designation contains characters that aren't allowed.")
+        return value
 
     def validate_mobile(self, value):
         value = value.strip()
@@ -124,13 +154,18 @@ class CustomerSerializer(serializers.ModelSerializer):
         value = value.strip()
         if len(value) < 5:
             raise serializers.ValidationError("Address line 1 must be at least 5 characters.")
+        if not ADDRESS_RE.match(value):
+            raise serializers.ValidationError("Address line 1 contains characters that aren't allowed.")
         return value
 
     def validate_address_line_2(self, value):
-        return value.strip()
+        value = value.strip()
+        if value and not ADDRESS_RE.match(value):
+            raise serializers.ValidationError("Address line 2 contains characters that aren't allowed.")
+        return value
 
     def validate_city(self, value):
-        value = value.strip()
+        value = _collapse_spaces(value)
         if len(value) < 2:
             raise serializers.ValidationError("City must be at least 2 characters.")
         if not CITY_RE.match(value):
@@ -144,4 +179,22 @@ class CustomerSerializer(serializers.ModelSerializer):
         return value
 
     def validate_notes(self, value):
-        return value.strip()
+        return _validate_free_text(value.strip(), "Notes")
+
+    # ---- cross-field rules -------------------------------------------------------
+
+    def validate(self, attrs):
+        mobile = attrs.get("mobile", getattr(self.instance, "mobile", None))
+        alt_mobile = attrs.get("alternate_mobile", getattr(self.instance, "alternate_mobile", None))
+        if mobile and alt_mobile and mobile == alt_mobile:
+            raise serializers.ValidationError(
+                {"alternate_mobile": "Alternate mobile number must be different from mobile number."}
+            )
+
+        email = attrs.get("email", getattr(self.instance, "email", None))
+        alt_email = attrs.get("alternate_email", getattr(self.instance, "alternate_email", None))
+        if email and alt_email and email.lower() == alt_email.lower():
+            raise serializers.ValidationError(
+                {"alternate_email": "Alternate email must be different from email."}
+            )
+        return attrs

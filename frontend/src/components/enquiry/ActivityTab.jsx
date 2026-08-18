@@ -18,6 +18,7 @@ export default function ActivityTab({ enquiry }) {
               <div key={a.id} className="relative">
                 <div className="absolute -left-6 top-0.5 w-3.5 h-3.5 rounded-full bg-teal-500 border-2 border-white shadow"></div>
                 <p className="text-sm text-slate-800 font-medium">{a.action}</p>
+                {a.description && <p className="text-xs text-slate-500 mt-0.5">{a.description}</p>}
                 <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(a.created_at)}</p>
               </div>
             ))}

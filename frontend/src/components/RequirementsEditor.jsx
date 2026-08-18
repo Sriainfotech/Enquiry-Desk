@@ -74,7 +74,14 @@ export default function RequirementsEditor({ requirements, onChange, rowErrors }
                   </td>
                   <td className="px-3 py-2 text-right font-medium text-slate-800 whitespace-nowrap pt-[9px]">{formatCurrency(requirementTotal(r))}</td>
                   <td className="px-2 py-2 text-center">
-                    <button onClick={() => removeRow(k)} className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>
+                    <button
+                      onClick={() => removeRow(k)}
+                      disabled={requirements.length <= 1}
+                      title={requirements.length <= 1 ? "At least one requirement is required" : "Remove requirement"}
+                      className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:text-slate-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </td>
                 </tr>
               );

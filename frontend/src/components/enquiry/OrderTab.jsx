@@ -4,11 +4,19 @@ import { createOrder, patchOrder } from "../../api/enquiries";
 import { useToast } from "../../hooks/useToast";
 import { fieldErrorsFrom, messageFrom } from "../../utils/apiError";
 import { formatCurrency, formatDate, todayStr } from "../../utils/format";
-import Code from "../Code";
+import * as v from "../../utils/validators";
 import EmptyState from "../EmptyState";
 import FormField from "../FormField";
 import StatusBadge from "../StatusBadge";
-import { btnDanger, btnPrimary, btnSecondary, cardCls, inputCls, inputErrCls, labelCls, sectionTitleCls, textareaCls } from "../ui";
+import { btnDanger, btnPrimary, btnSecondary, cardCls, inputCls, inputErrCls, sectionTitleCls, textareaCls } from "../ui";
+import InternalDocumentAttachment from "./InternalDocumentAttachment";
+
+// Full literal strings (not template-built) so Tailwind's JIT scanner can find them.
+const FIELD_SPAN = "col-span-6 sm:col-span-4 lg:col-span-3";
+const subHeadingCls = "text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3";
+// Same height/padding/radius as a real input so read-only (system-set) values line up
+// exactly with editable fields in the grid — just visually muted, not a broken input.
+const readOnlyCls = "w-full h-[38px] px-3 border border-slate-200 rounded-md bg-slate-50 text-sm text-slate-700 flex items-center";
 
 export default function OrderTab({ enquiry, onChanged }) {
   const { showToast } = useToast();
@@ -19,10 +27,18 @@ export default function OrderTab({ enquiry, onChanged }) {
   const [poDate, setPoDate] = useState(todayStr());
   const [convertErrors, setConvertErrors] = useState({});
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState({ po_number: o.po_number || "", po_date: o.po_date || "", remarks: o.remarks || "" });
+  const [draft, setDraft] = useState({
+    order_number: o.order_number || "", po_number: o.po_number || "", po_date: o.po_date || "",
+    expected_delivery_date: o.expected_delivery_date || "", remarks: o.remarks || "",
+  });
   const [errors, setErrors] = useState({});
 
-  useEffect(() => setDraft({ po_number: o.po_number || "", po_date: o.po_date || "", remarks: o.remarks || "" }), [o.po_number, o.po_date, o.remarks]);
+  useEffect(() => {
+    setDraft({
+      order_number: o.order_number || "", po_number: o.po_number || "", po_date: o.po_date || "",
+      expected_delivery_date: o.expected_delivery_date || "", remarks: o.remarks || "",
+    });
+  }, [o.order_number, o.po_number, o.po_date, o.expected_delivery_date, o.remarks]);
 
   const canConvert = q.status === "Accepted" && o.status === "Not Converted";
 
@@ -42,7 +58,8 @@ export default function OrderTab({ enquiry, onChanged }) {
 
   async function convert() {
     const errs = {};
-    if (poNumber.length > 50) errs.po_number = "PO Number cannot exceed 50 characters.";
+    const poNumberErr = v.documentNumber(poNumber, "PO Number");
+    if (poNumberErr) errs.po_number = poNumberErr;
     if (poDate && poDate > todayStr()) errs.po_date = "PO Date cannot be later than today.";
     setConvertErrors(errs);
     if (Object.keys(errs).length) return;
@@ -73,8 +90,11 @@ export default function OrderTab({ enquiry, onChanged }) {
     <div className={`${cardCls} p-5`}>
       <div className="flex items-center justify-between mb-1">
         <h3 className={sectionTitleCls + " border-none mb-0 pb-0"}><Package size={15} /> Order</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Order Confirmed: <span className={`font-semibold ${confirmedYesNo === "Yes" ? "text-green-600" : "text-slate-500"}`}>{confirmedYesNo}</span></span>
+        <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-lg pl-3 pr-2.5 py-1.5">
+          <div className="text-right leading-tight">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Order Confirmed</p>
+            <p className={`text-xs font-semibold ${confirmedYesNo === "Yes" ? "text-green-600" : "text-slate-500"}`}>{confirmedYesNo}</p>
+          </div>
           <StatusBadge status={o.status} type="order" />
         </div>
       </div>
@@ -90,16 +110,16 @@ export default function OrderTab({ enquiry, onChanged }) {
       )}
 
       {showConvert && (
-        <div className="max-w-md space-y-3 mb-4 bg-slate-50 border border-slate-100 rounded-lg p-4">
-          <div className="flex flex-wrap gap-3">
-            <FormField className="w-[220px]" label="PO Number" hint="Optional" error={convertErrors.po_number}>
-              <input className={convertErrors.po_number ? inputErrCls : inputCls} value={poNumber} onChange={(e) => setPoNumber(e.target.value)} maxLength={50} />
+        <div className="space-y-3 mb-4 bg-slate-50 border border-slate-100 rounded-lg p-4">
+          <div className="grid grid-cols-12 gap-4">
+            <FormField className={FIELD_SPAN} label="PO Number (Optional)" hint="Optional — enter the PO number if you already have it." error={convertErrors.po_number}>
+              <input className={convertErrors.po_number ? inputErrCls : inputCls} value={poNumber} onChange={(e) => setPoNumber(e.target.value)} maxLength={30} placeholder="Not provided" />
             </FormField>
-            <FormField className="w-[180px]" label="PO Date" error={convertErrors.po_date}>
+            <FormField className={FIELD_SPAN} label="PO Date" error={convertErrors.po_date}>
               <input type="date" className={convertErrors.po_date ? inputErrCls : inputCls} value={poDate} onChange={(e) => setPoDate(e.target.value)} max={todayStr()} />
             </FormField>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <button className={btnSecondary} onClick={() => setShowConvert(false)}>Cancel</button>
             <button className={btnPrimary} onClick={convert} disabled={busy}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Confirm Conversion
@@ -110,45 +130,88 @@ export default function OrderTab({ enquiry, onChanged }) {
 
       {o.status !== "Not Converted" && (
         <>
-          <div className="flex flex-wrap gap-4 mb-5">
-            <div className="w-[190px]"><p className={labelCls}>Order Number</p><Code>{o.order_number}</Code></div>
-            <div className="w-[160px]"><p className={labelCls}>Order Date</p><p className="text-sm text-slate-800">{formatDate(o.order_date)}</p></div>
-            <FormField className="w-[220px]" label="PO Number" error={errors.po_number}>
+          <p className={subHeadingCls}>Order Information</p>
+          <div className="grid grid-cols-12 gap-x-5 gap-y-4 mb-6">
+            <FormField
+              className={FIELD_SPAN} label="Order Number (Optional)" error={errors.order_number}
+              hint="Optional — enter the order number from your external system."
+            >
               <input
-                className={errors.po_number ? inputErrCls : inputCls} value={draft.po_number} maxLength={50}
-                onChange={(e) => setDraft((d) => ({ ...d, po_number: e.target.value }))}
-                onBlur={(e) => e.target.value !== o.po_number && commitField("po_number", e.target.value)}
+                className={errors.order_number ? inputErrCls : inputCls} value={draft.order_number} maxLength={30}
+                placeholder="Not provided"
+                onChange={(e) => setDraft((d) => ({ ...d, order_number: e.target.value }))}
+                onBlur={(e) => {
+                  const next = e.target.value.trim();
+                  if (next === (o.order_number || "")) return;
+                  const err = v.documentNumber(next, "Order Number");
+                  if (err) { setErrors((prev) => ({ ...prev, order_number: err })); return; }
+                  commitField("order_number", next || null);
+                }}
               />
             </FormField>
-            <FormField className="w-[180px]" label="PO Date" error={errors.po_date}>
+            <FormField className={FIELD_SPAN} label="Order Date">
+              <div className={readOnlyCls}>{formatDate(o.order_date)}</div>
+            </FormField>
+            <FormField
+              className={FIELD_SPAN} label="PO Number (Optional)" error={errors.po_number}
+              hint="Optional — enter the PO number from your external system."
+            >
+              <input
+                className={errors.po_number ? inputErrCls : inputCls} value={draft.po_number} maxLength={30}
+                placeholder="Not provided"
+                onChange={(e) => setDraft((d) => ({ ...d, po_number: e.target.value }))}
+                onBlur={(e) => {
+                  if (e.target.value === o.po_number) return;
+                  const err = v.documentNumber(e.target.value, "PO Number");
+                  if (err) { setErrors((prev) => ({ ...prev, po_number: err })); return; }
+                  commitField("po_number", e.target.value.trim());
+                }}
+              />
+            </FormField>
+            <FormField className={FIELD_SPAN} label="PO Date" error={errors.po_date}>
               <input
                 type="date" className={errors.po_date ? inputErrCls : inputCls} value={draft.po_date}
                 onChange={(e) => setDraft((d) => ({ ...d, po_date: e.target.value }))}
                 onBlur={(e) => e.target.value !== o.po_date && commitField("po_date", e.target.value)}
               />
             </FormField>
-            <div className="w-[160px]"><p className={labelCls}>Order Value</p><p className="text-sm font-bold text-slate-900 h-[38px] flex items-center">{formatCurrency(o.value)}</p></div>
+            <FormField className={FIELD_SPAN} label="Order Value">
+              <div className={readOnlyCls + " font-semibold text-slate-900"}>{formatCurrency(o.value)}</div>
+            </FormField>
+            <FormField className={FIELD_SPAN} label="Expected Delivery Date" error={errors.expected_delivery_date}>
+              <input
+                type="date" className={errors.expected_delivery_date ? inputErrCls : inputCls} value={draft.expected_delivery_date}
+                onChange={(e) => setDraft((d) => ({ ...d, expected_delivery_date: e.target.value }))}
+                onBlur={(e) => e.target.value !== o.expected_delivery_date && commitField("expected_delivery_date", e.target.value)}
+                min={o.order_date || undefined}
+              />
+            </FormField>
           </div>
-          <FormField label="Order Remarks" error={errors.remarks} counter={{ value: draft.remarks.length, max: 500 }}>
-            <textarea
-              className={textareaCls} rows={2} maxLength={500} value={draft.remarks}
-              onChange={(e) => setDraft((d) => ({ ...d, remarks: e.target.value }))}
-              onBlur={(e) => e.target.value !== o.remarks && commitField("remarks", e.target.value)}
-            />
-          </FormField>
 
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+          <div className="pt-5 mt-1 border-t border-slate-100">
+            <FormField label="Order Remarks" error={errors.remarks} counter={{ value: draft.remarks.length, max: 500 }}>
+              <textarea
+                className={textareaCls} rows={3} maxLength={500} value={draft.remarks}
+                onChange={(e) => setDraft((d) => ({ ...d, remarks: e.target.value }))}
+                onBlur={(e) => e.target.value !== o.remarks && commitField("remarks", e.target.value)}
+              />
+            </FormField>
+          </div>
+
+          <InternalDocumentAttachment entityType="order" enquiryId={enquiry.id} />
+
+          <div className="flex flex-wrap items-center justify-end gap-2 mt-5 pt-4 border-t border-slate-100">
             {o.status === "Pending" && (
               <>
-                <button className={btnPrimary} disabled={busy} onClick={() => setStatus("Confirmed", "Order Confirmed")}><CheckCircle2 size={14} /> Mark as Confirmed</button>
-                <button className={btnSecondary} disabled={busy} onClick={() => setStatus("Partially Confirmed", "Order Partially Confirmed")}>Mark as Partially Confirmed</button>
                 <button className={btnDanger} disabled={busy} onClick={() => setStatus("Cancelled", "Order Cancelled")}><XCircle size={14} /> Cancel Order</button>
+                <button className={btnSecondary} disabled={busy} onClick={() => setStatus("Partially Confirmed", "Order Partially Confirmed")}>Mark as Partially Confirmed</button>
+                <button className={btnPrimary} disabled={busy} onClick={() => setStatus("Confirmed", "Order Confirmed")}><CheckCircle2 size={14} /> Mark as Confirmed</button>
               </>
             )}
             {(o.status === "Confirmed" || o.status === "Partially Confirmed") && (
               <>
-                <button className={btnPrimary} disabled={busy} onClick={() => setStatus("Completed", "Order Marked as Completed")}><CheckCircle2 size={14} /> Mark as Completed</button>
                 <button className={btnDanger} disabled={busy} onClick={() => setStatus("Cancelled", "Order Cancelled")}><XCircle size={14} /> Cancel Order</button>
+                <button className={btnPrimary} disabled={busy} onClick={() => setStatus("Completed", "Order Marked as Completed")}><CheckCircle2 size={14} /> Mark as Completed</button>
               </>
             )}
           </div>

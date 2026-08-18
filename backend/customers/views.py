@@ -44,7 +44,7 @@ class CustomerListCreateAPIView(APIView):
     def get(self, request):
         queryset = base_queryset()
 
-        search = request.query_params.get("search", "").strip()
+        search = request.query_params.get("search", "").strip()[:100]
         if search:
             q = Q()
             for field in SEARCH_FIELDS:

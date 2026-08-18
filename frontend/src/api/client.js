@@ -2,6 +2,10 @@ import axios from "axios";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 
+// The backend's origin (no "/api" suffix) — used to resolve the relative media URLs
+// (e.g. "/media/quotations/2026/08/file.pdf") that file-upload fields return.
+export const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
+
 const ACCESS_KEY = "ced_access_token";
 const REFRESH_KEY = "ced_refresh_token";
 

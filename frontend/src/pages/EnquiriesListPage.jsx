@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Ban, ChevronDown, ClipboardList, Eye, Filter, Loader2, Pencil, Plus, Search, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Ban, ChevronDown, Clock, ClipboardList, Eye, Filter, Loader2, Pencil, Plus, Search, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getCustomer } from "../api/customers";
 import { listEnquiries, patchEnquiry } from "../api/enquiries";
@@ -10,28 +11,126 @@ import PageHeader from "../components/PageHeader";
 import Pagination from "../components/Pagination";
 import SearchableSelect from "../components/SearchableSelect";
 import StatusBadge from "../components/StatusBadge";
-import { btnGhostSm, btnPrimary, cardCls, inputCls, tableHeadCls } from "../components/ui";
+import { btnGhost, btnGhostSm, btnPrimary, btnSecondary, cardCls, inputCls, labelCls, tableHeadCls } from "../components/ui";
 import { useConfirm } from "../hooks/useConfirm";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useToast } from "../hooks/useToast";
 import { formatCurrency, formatDate } from "../utils/format";
 import {
-  BUSINESS_LINES, ENQUIRY_SORT_OPTIONS, ENQUIRY_STATUSES, INVOICE_STATUSES, ORDER_STATUSES,
+  BUSINESS_LINES, ENQUIRY_SORT_OPTIONS, ENQUIRY_SOURCES, ENQUIRY_STATUSES, INVOICE_STATUSES, ORDER_STATUSES,
   PAGE_SIZE, PAYMENT_STATUSES, PRIORITIES, QUOTATION_STATUSES,
 } from "../constants";
 
-const FILTER_KEYS = ["business_line", "status", "priority", "quotation_status", "order_status", "invoice_status", "payment_status", "sales_person", "date_from", "date_to"];
+// Primary-row filters apply instantly. Everything else lives in the "More Filters"
+// popover and only commits to real state when the user clicks Apply — so opening the
+// popover to look around never triggers a fetch.
+const PRIMARY_FILTER_KEYS = ["business_line", "status", "priority"];
+const POPOVER_FILTER_KEYS = ["enquiry_source", "quotation_status", "order_status", "invoice_status", "payment_status", "sales_person", "date_from", "date_to"];
+const FILTER_KEYS = [...PRIMARY_FILTER_KEYS, ...POPOVER_FILTER_KEYS];
 const FILTER_LABELS = {
-  business_line: "Business Line", status: "Status", priority: "Priority", quotation_status: "Quotation",
-  order_status: "Order", invoice_status: "Invoice", payment_status: "Payment", sales_person: "Sales Person",
-  date_from: "From", date_to: "To",
+  business_line: "Business Line", status: "Status", priority: "Priority", enquiry_source: "Source",
+  quotation_status: "Quotation", order_status: "Order", invoice_status: "Invoice", payment_status: "Payment",
+  sales_person: "Sales Person", date_from: "From", date_to: "To",
 };
-const MORE_FILTER_KEYS = ["quotation_status", "order_status", "invoice_status", "payment_status", "sales_person"];
+const EMPTY_POPOVER_FILTERS = Object.fromEntries(POPOVER_FILTER_KEYS.map((k) => [k, ""]));
 
 function paramsToFilters(sp) {
   const f = {};
   FILTER_KEYS.forEach((k) => { f[k] = sp.get(k) || ""; });
   return f;
+}
+
+// Floating panel anchored to the "More Filters" trigger — portaled to <body> with
+// fixed coordinates (same escape-the-clipping-ancestor technique as SearchableSelect)
+// so it can't be cut off by the toolbar card's overflow.
+function MoreFiltersPopover({ anchorRef, draft, setDraft, onApply, onClear, onClose }) {
+  const panelRef = useRef(null);
+  const [coords, setCoords] = useState(null);
+
+  useEffect(() => {
+    function update() {
+      const el = anchorRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const width = Math.min(620, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+      setCoords({ left, top: rect.bottom + 6, width });
+    }
+    update();
+    function onMouseDown(e) {
+      if (anchorRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      onClose();
+    }
+    function onKeyDown(e) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function setField(key, value) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  if (!coords) return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
+      className="z-[70] bg-white border border-slate-200 rounded-lg shadow-xl p-4"
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Enquiry Source</label>
+          <SearchableSelect value={draft.enquiry_source} onChange={(v) => setField("enquiry_source", v)} placeholder="Any source" options={ENQUIRY_SOURCES} />
+        </div>
+        <div>
+          <label className={labelCls}>Sales Person</label>
+          <input className={inputCls} placeholder="Sales person" value={draft.sales_person} onChange={(e) => setField("sales_person", e.target.value)} />
+        </div>
+        <div>
+          <label className={labelCls}>Quotation Status</label>
+          <SearchableSelect value={draft.quotation_status} onChange={(v) => setField("quotation_status", v)} placeholder="Any status" options={QUOTATION_STATUSES} />
+        </div>
+        <div>
+          <label className={labelCls}>Order Status</label>
+          <SearchableSelect value={draft.order_status} onChange={(v) => setField("order_status", v)} placeholder="Any status" options={ORDER_STATUSES} />
+        </div>
+        <div>
+          <label className={labelCls}>Invoice Status</label>
+          <SearchableSelect value={draft.invoice_status} onChange={(v) => setField("invoice_status", v)} placeholder="Any status" options={INVOICE_STATUSES} />
+        </div>
+        <div>
+          <label className={labelCls}>Payment Status</label>
+          <SearchableSelect value={draft.payment_status} onChange={(v) => setField("payment_status", v)} placeholder="Any status" options={PAYMENT_STATUSES} />
+        </div>
+        <div className="col-span-2">
+          <label className={labelCls}>Date Range</label>
+          <div className="flex items-center gap-2">
+            <input type="date" className={inputCls} value={draft.date_from} onChange={(e) => setField("date_from", e.target.value)} title="From date" />
+            <span className="text-xs text-slate-400 flex-shrink-0">to</span>
+            <input type="date" className={inputCls} value={draft.date_to} onChange={(e) => setField("date_to", e.target.value)} title="To date" min={draft.date_from || undefined} />
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+        <button onClick={onClear} className={btnSecondary}>Clear</button>
+        <button onClick={onApply} className={btnPrimary}>Apply Filters</button>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 export default function EnquiriesListPage() {
@@ -52,7 +151,9 @@ export default function EnquiriesListPage() {
   const [data, setData] = useState({ results: [], count: 0, total_pages: 1 });
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
-  const [showMoreFilters, setShowMoreFilters] = useState(() => MORE_FILTER_KEYS.some((k) => searchParams.get(k)));
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState(EMPTY_POPOVER_FILTERS);
+  const moreBtnRef = useRef(null);
 
   // If the page loaded with ?customer=<id> from a shared URL, fetch its label once.
   useEffect(() => {
@@ -110,10 +211,23 @@ export default function EnquiriesListPage() {
   }
   function clearAll() {
     setSearch("");
-    setFilters({ business_line: "", status: "", priority: "", quotation_status: "", order_status: "", invoice_status: "", payment_status: "", sales_person: "", date_from: "", date_to: "" });
+    setFilters(Object.fromEntries(FILTER_KEYS.map((k) => [k, ""])));
+    setDraftFilters(EMPTY_POPOVER_FILTERS);
     setCustomerId(null);
     setCustomerLabel("");
     setOrdering("-enquiry_date");
+  }
+
+  function openMoreFilters() {
+    setDraftFilters(Object.fromEntries(POPOVER_FILTER_KEYS.map((k) => [k, filters[k]])));
+    setMoreOpen(true);
+  }
+  function applyMoreFilters() {
+    setFilters((f) => ({ ...f, ...draftFilters }));
+    setMoreOpen(false);
+  }
+  function clearMoreFilters() {
+    setDraftFilters(EMPTY_POPOVER_FILTERS);
   }
 
   const activeChips = useMemo(() => {
@@ -122,6 +236,7 @@ export default function EnquiriesListPage() {
     return chips;
   }, [filters, customerId, customerLabel]);
   const activeFilterCount = activeChips.length;
+  const moreFiltersActiveCount = POPOVER_FILTER_KEYS.filter((k) => filters[k]).length;
 
   const customerName = (e) => e.customer_detail?.company_name || "—";
 
@@ -130,66 +245,69 @@ export default function EnquiriesListPage() {
       <PageHeader
         title="Enquiries"
         subtitle="Track enquiries from first contact through to invoicing"
-        action={<button className={btnPrimary} onClick={() => navigate("/enquiries/new")}><Plus size={16} /> New Enquiry</button>}
+        action={
+          <div className="flex items-center gap-2">
+            <button className={btnGhost} onClick={() => navigate("/enquiries/activity")}><Clock size={15} /> Activity Log</button>
+            <button className={btnPrimary} onClick={() => navigate("/enquiries/new")}><Plus size={16} /> New Enquiry</button>
+          </div>
+        }
       />
 
       <div className={`${cardCls} p-4 mb-4`}>
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <div className="relative flex-1 max-w-sm">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input className={inputCls + " pl-9"} placeholder="Search by enquiry number, customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="w-[220px]">
+          <div className="w-[200px]">
             <AsyncCustomerSelect value={customerId} valueLabel={customerLabel} onChange={(id, label) => { setCustomerId(id); setCustomerLabel(label || ""); }} />
           </div>
-          <div className="w-[190px]">
+          <div className="w-[170px]">
             <SearchableSelect value={filters.business_line} onChange={(v) => setFilter("business_line", v)} placeholder="Business Line" options={BUSINESS_LINES} />
           </div>
-          <div className="w-[170px]">
+          <div className="w-[150px]">
             <SearchableSelect value={filters.status} onChange={(v) => setFilter("status", v)} placeholder="Status" options={ENQUIRY_STATUSES} />
           </div>
-          <div className="w-[140px]">
+          <div className="w-[130px]">
             <SearchableSelect value={filters.priority} onChange={(v) => setFilter("priority", v)} placeholder="Priority" options={PRIORITIES} />
           </div>
-          <button
-            onClick={() => setShowMoreFilters((s) => !s)}
-            className="inline-flex items-center gap-1 text-xs text-slate-600 font-medium hover:text-teal-700 px-2 h-[38px]"
-          >
-            <Filter size={13} /> More Filters <ChevronDown size={13} className={`transition-transform ${showMoreFilters ? "rotate-180" : ""}`} />
-          </button>
+          <div className="w-[180px]">
+            <SearchableSelect value={ordering} onChange={setOrdering} clearable={false} searchable={false} placeholder="Sort" options={ENQUIRY_SORT_OPTIONS} />
+          </div>
+          <div ref={moreBtnRef}>
+            <button
+              onClick={() => (moreOpen ? setMoreOpen(false) : openMoreFilters())}
+              className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 h-[38px] rounded-md border transition-colors ${
+                moreOpen || moreFiltersActiveCount > 0
+                  ? "border-teal-300 bg-teal-50 text-teal-700"
+                  : "border-slate-300 text-slate-600 hover:border-slate-400"
+              }`}
+            >
+              <Filter size={13} /> More Filters
+              {moreFiltersActiveCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-teal-600 text-white text-[10px] font-semibold">
+                  {moreFiltersActiveCount}
+                </span>
+              )}
+              <ChevronDown size={13} className={`transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+            </button>
+          </div>
           {(activeFilterCount > 0 || search) && (
             <button onClick={clearAll} className="text-xs text-teal-600 font-medium hover:underline ml-auto">
-              Clear filters ({activeFilterCount + (search ? 1 : 0)})
+              Clear All ({activeFilterCount + (search ? 1 : 0)})
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-slate-500 flex-shrink-0">Date Range</span>
-          <input type="date" className={inputCls + " w-[160px]"} value={filters.date_from} onChange={(e) => setFilter("date_from", e.target.value)} title="From date" />
-          <span className="text-xs text-slate-400">to</span>
-          <input type="date" className={inputCls + " w-[160px]"} value={filters.date_to} onChange={(e) => setFilter("date_to", e.target.value)} title="To date" />
-        </div>
-
-        {showMoreFilters && (
-          <div className="flex flex-wrap gap-2 pt-3 mt-3 border-t border-slate-100">
-            <div className="w-[190px]">
-              <SearchableSelect value={filters.quotation_status} onChange={(v) => setFilter("quotation_status", v)} placeholder="Quotation Status" options={QUOTATION_STATUSES} />
-            </div>
-            <div className="w-[190px]">
-              <SearchableSelect value={filters.order_status} onChange={(v) => setFilter("order_status", v)} placeholder="Order Status" options={ORDER_STATUSES} />
-            </div>
-            <div className="w-[190px]">
-              <SearchableSelect value={filters.invoice_status} onChange={(v) => setFilter("invoice_status", v)} placeholder="Invoice Status" options={INVOICE_STATUSES} />
-            </div>
-            <div className="w-[190px]">
-              <SearchableSelect value={filters.payment_status} onChange={(v) => setFilter("payment_status", v)} placeholder="Payment Status" options={PAYMENT_STATUSES} />
-            </div>
-            <input className={inputCls + " w-[190px]"} placeholder="Sales person" value={filters.sales_person} onChange={(e) => setFilter("sales_person", e.target.value)} />
-            <div className="w-[220px]">
-              <SearchableSelect value={ordering} onChange={setOrdering} clearable={false} searchable={false} placeholder="Sort" options={ENQUIRY_SORT_OPTIONS} />
-            </div>
-          </div>
+        {moreOpen && (
+          <MoreFiltersPopover
+            anchorRef={moreBtnRef}
+            draft={draftFilters}
+            setDraft={setDraftFilters}
+            onApply={applyMoreFilters}
+            onClear={clearMoreFilters}
+            onClose={() => setMoreOpen(false)}
+          />
         )}
 
         {activeChips.length > 0 && (
