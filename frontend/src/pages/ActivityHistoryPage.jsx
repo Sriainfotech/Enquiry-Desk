@@ -113,17 +113,17 @@ export default function ActivityHistoryPage() {
 
       <div className={`${cardCls} p-4 mb-4`}>
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <div className="relative flex-1 max-w-sm">
+          <div className="relative flex-1 min-w-[160px] sm:max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input className={inputCls + " pl-9"} placeholder="Search by enquiry, customer, action…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="w-[220px]">
+          <div className="w-full sm:w-[220px]">
             <AsyncCustomerSelect value={customerId} valueLabel={customerLabel} onChange={(id, label) => { setCustomerId(id); setCustomerLabel(label || ""); }} />
           </div>
-          <div className="w-[170px]">
+          <div className="w-full sm:w-[170px]">
             <SearchableSelect value={filters.activity_type} onChange={(v) => setFilter("activity_type", v)} placeholder="Activity Type" searchable={false} options={ACTIVITY_TYPE_OPTIONS} />
           </div>
-          <div className="w-[180px]">
+          <div className="w-full sm:w-[180px]">
             <SearchableSelect value={ordering} onChange={setOrdering} clearable={false} searchable={false} placeholder="Sort" options={SORT_OPTIONS} />
           </div>
           {(activeFilterCount > 0 || search) && (
@@ -135,9 +135,9 @@ export default function ActivityHistoryPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <Filter size={13} className="text-slate-400 flex-shrink-0" />
           <span className="text-xs text-slate-500 flex-shrink-0">Date Range</span>
-          <input type="date" className={inputCls + " w-[160px]"} value={filters.date_from} onChange={(e) => setFilter("date_from", e.target.value)} title="From date" />
+          <input type="date" className={inputCls + " w-[calc(50%-38px)] sm:w-[160px]"} value={filters.date_from} onChange={(e) => setFilter("date_from", e.target.value)} title="From date" />
           <span className="text-xs text-slate-400">to</span>
-          <input type="date" className={inputCls + " w-[160px]"} value={filters.date_to} onChange={(e) => setFilter("date_to", e.target.value)} title="To date" />
+          <input type="date" className={inputCls + " w-[calc(50%-38px)] sm:w-[160px]"} value={filters.date_to} onChange={(e) => setFilter("date_to", e.target.value)} title="To date" />
         </div>
 
         {activeChips.length > 0 && (

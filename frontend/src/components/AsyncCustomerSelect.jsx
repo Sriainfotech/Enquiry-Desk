@@ -48,7 +48,7 @@ export default function AsyncCustomerSelect({ value, valueLabel, onChange, place
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden">
+        <div className="absolute z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden">
           <div className="p-2 border-b border-slate-100">
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />

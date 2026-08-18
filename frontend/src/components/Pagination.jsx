@@ -64,21 +64,28 @@ export default function Pagination({
           >
             <ChevronLeft size={14} />
           </button>
-          {pages.map((p, i) =>
-            p === DOTS ? (
-              <span key={`dots-${i}`} className="px-1.5 text-xs text-slate-400">{DOTS}</span>
-            ) : (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className={`min-w-[26px] h-7 px-1.5 rounded-md text-xs font-medium transition-colors ${
-                  p === page ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                {p}
-              </button>
-            )
-          )}
+          {/* Full numbered range on larger screens; a compact "page X / Y" on mobile
+              where a row of 5-7 number buttons wouldn't comfortably fit. */}
+          <div className="hidden sm:flex items-center gap-1">
+            {pages.map((p, i) =>
+              p === DOTS ? (
+                <span key={`dots-${i}`} className="px-1.5 text-xs text-slate-400">{DOTS}</span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`min-w-[26px] h-7 px-1.5 rounded-md text-xs font-medium transition-colors ${
+                    p === page ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {p}
+                </button>
+              )
+            )}
+          </div>
+          <span className="sm:hidden text-xs font-medium text-slate-600 px-2 whitespace-nowrap">
+            {page} / {totalPages}
+          </span>
           <button
             className="p-1.5 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
             disabled={page >= totalPages}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bell, Building2, ChevronDown, ClipboardList, FileText, Package, Search } from "lucide-react";
+import { AlertTriangle, Bell, Building2, ChevronDown, ClipboardList, FileText, Menu, Package, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { listCustomers } from "../api/customers";
 import { listEnquiries } from "../api/enquiries";
@@ -7,7 +7,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { focusRing } from "./ui";
 
-export default function TopHeader({ dashboard }) {
+export default function TopHeader({ dashboard, onOpenMenu }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -66,8 +66,15 @@ export default function TopHeader({ dashboard }) {
   }
 
   return (
-    <div className="h-16 bg-white border-b border-slate-200 flex items-center gap-4 px-6 lg:px-8 flex-shrink-0 sticky top-0 z-20">
-      <div className="relative flex-1 max-w-md" ref={searchWrapRef}>
+    <div className="h-16 bg-white border-b border-slate-200 flex items-center gap-3 sm:gap-4 px-4 sm:px-6 lg:px-8 flex-shrink-0 sticky top-0 z-20">
+      <button
+        onClick={onOpenMenu}
+        className={`md:hidden p-2 -ml-2 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors flex-shrink-0 ${focusRing}`}
+        title="Open menu"
+      >
+        <Menu size={20} />
+      </button>
+      <div className="relative flex-1 min-w-0 max-w-md" ref={searchWrapRef}>
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           className="w-full h-9 pl-9 pr-3 text-sm border border-slate-200 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/40 focus:border-teal-500 placeholder:text-slate-400"
@@ -128,7 +135,7 @@ export default function TopHeader({ dashboard }) {
             )}
           </button>
           {notifOpen && (
-            <div className="absolute right-0 z-30 mt-2 w-80 bg-white border border-slate-200 rounded-md shadow-lg">
+            <div className="absolute right-0 z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-md shadow-lg">
               <div className="px-4 py-3 border-b border-slate-100">
                 <p className="text-sm font-semibold text-slate-800">Notifications</p>
               </div>
@@ -162,7 +169,7 @@ export default function TopHeader({ dashboard }) {
             <ChevronDown size={14} className={`text-slate-400 transition-transform ${userOpen ? "rotate-180" : ""}`} />
           </button>
           {userOpen && (
-            <div className="absolute right-0 z-30 mt-2 w-56 bg-white border border-slate-200 rounded-md shadow-lg py-2">
+            <div className="absolute right-0 z-30 mt-2 w-56 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-md shadow-lg py-2">
               <div className="px-4 py-2 border-b border-slate-100">
                 <p className="text-sm font-semibold text-slate-800">{user?.full_name || user?.username}</p>
                 <p className="text-xs text-slate-400 mt-0.5">{user?.email || "Team workspace · Vantage"}</p>

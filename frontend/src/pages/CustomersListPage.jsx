@@ -8,7 +8,7 @@ import PageHeader from "../components/PageHeader";
 import Pagination from "../components/Pagination";
 import SearchableSelect from "../components/SearchableSelect";
 import StatusBadge from "../components/StatusBadge";
-import { btnGhostSm, btnPrimary, cardCls, inputCls, tableHeadCls } from "../components/ui";
+import { btnGhostSm, btnPrimary, btnSecondary, cardCls, inputCls, tableHeadCls } from "../components/ui";
 import { useConfirm } from "../hooks/useConfirm";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useToast } from "../hooks/useToast";
@@ -131,17 +131,17 @@ export default function CustomersListPage() {
 
       <div className={`${cardCls} p-4 mb-4`}>
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <div className="relative flex-1 max-w-sm">
+          <div className="relative flex-1 min-w-[160px] sm:max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input className={inputCls + " pl-9"} placeholder="Search customers…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="w-[150px]">
+          <div className="w-full sm:w-[150px]">
             <SearchableSelect value={filters.is_active} onChange={(v) => setFilter("is_active", v)} placeholder="Status" searchable={false} options={["Active", "Inactive"]} />
           </div>
-          <div className="w-[190px]">
+          <div className="w-full sm:w-[190px]">
             <SearchableSelect value={filters.customer_type} onChange={(v) => setFilter("customer_type", v)} placeholder="Customer Type" options={CUSTOMER_TYPES} />
           </div>
-          <div className="w-[220px]">
+          <div className="w-full sm:w-[220px]">
             <SearchableSelect value={filters.state} onChange={(v) => setFilter("state", v)} placeholder="State" options={INDIAN_STATES} />
           </div>
           <button
@@ -160,22 +160,22 @@ export default function CustomersListPage() {
         {showMoreFilters && (
           <div className="pt-3 border-t border-slate-100 space-y-2">
             <div className="flex flex-wrap gap-2">
-              <div className="w-[220px]">
+              <div className="w-full sm:w-[220px]">
                 <SearchableSelect value={filters.company_type} onChange={(v) => setFilter("company_type", v)} placeholder="Company Type" options={COMPANY_TYPES} />
               </div>
-              <div className="w-[220px]">
+              <div className="w-full sm:w-[220px]">
                 <SearchableSelect value={filters.industry} onChange={(v) => setFilter("industry", v)} placeholder="Industry" options={INDUSTRIES} />
               </div>
-              <input className={inputCls + " w-[190px]"} placeholder="Filter by city" value={filters.city} onChange={(e) => setFilter("city", e.target.value)} />
-              <div className="w-[220px]">
+              <input className={inputCls + " w-full sm:w-[190px]"} placeholder="Filter by city" value={filters.city} onChange={(e) => setFilter("city", e.target.value)} />
+              <div className="w-full sm:w-[220px]">
                 <SearchableSelect value={ordering} onChange={setOrdering} clearable={false} searchable={false} placeholder="Sort" options={CUSTOMER_SORT_OPTIONS} />
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-slate-500 flex-shrink-0">Created</span>
-              <input type="date" className={inputCls + " w-[160px]"} value={filters.created_from} onChange={(e) => setFilter("created_from", e.target.value)} title="Created from" />
+              <input type="date" className={inputCls + " w-[calc(50%-38px)] sm:w-[160px]"} value={filters.created_from} onChange={(e) => setFilter("created_from", e.target.value)} title="Created from" />
               <span className="text-xs text-slate-400">to</span>
-              <input type="date" className={inputCls + " w-[160px]"} value={filters.created_to} onChange={(e) => setFilter("created_to", e.target.value)} title="Created to" />
+              <input type="date" className={inputCls + " w-[calc(50%-38px)] sm:w-[160px]"} value={filters.created_to} onChange={(e) => setFilter("created_to", e.target.value)} title="Created to" />
             </div>
           </div>
         )}
@@ -212,7 +212,8 @@ export default function CustomersListPage() {
           />
         ) : (
           <>
-            <div className="overflow-x-auto relative">
+            {/* Desktop / tablet: data table. */}
+            <div className="hidden md:block overflow-x-auto relative">
               {loading && (
                 <div className="absolute inset-0 bg-white/60 z-10 flex items-start justify-center pt-10">
                   <Loader2 size={18} className="text-teal-600 animate-spin" />
@@ -276,6 +277,56 @@ export default function CustomersListPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile: one card per customer instead of a squeezed 9-column table. */}
+            <div className="md:hidden divide-y divide-slate-100 relative">
+              {loading && (
+                <div className="absolute inset-0 bg-white/60 z-10 flex items-start justify-center pt-10">
+                  <Loader2 size={18} className="text-teal-600 animate-spin" />
+                </div>
+              )}
+              {data.results.map((c) => (
+                <div key={c.id} className="p-4">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <button onClick={() => navigate(`/customers/${c.id}`)} className="font-semibold text-slate-800 hover:text-teal-700 text-left">
+                      {c.company_name}
+                    </button>
+                    <StatusBadge status={c.is_active ? "Active" : "Inactive"} type="active" />
+                  </div>
+                  <div className="text-xs text-slate-500 mb-2"><Code>{c.customer_code}</Code></div>
+                  <div className="space-y-1 text-sm text-slate-600 mb-3">
+                    <p>Contact: {c.contact_person}</p>
+                    <p>Mobile: {c.mobile}</p>
+                    <p className="truncate">Email: {c.email}</p>
+                    {c.gst_number && <p className="font-mono text-xs">GST: {c.gst_number}</p>}
+                    {c.city && <p>{c.city}{c.state ? `, ${c.state}` : ""}</p>}
+                    <p>Enquiries: {c.total_enquiries}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => navigate(`/customers/${c.id}`)} className={btnSecondary + " flex-1"}><Eye size={13} /> View</button>
+                    <button onClick={() => navigate(`/customers/${c.id}/edit`)} className={btnSecondary + " flex-1"}><Pencil size={13} /> Edit</button>
+                    <button
+                      onClick={() =>
+                        askConfirm({
+                          title: c.is_active ? "Deactivate customer?" : "Activate customer?",
+                          message: c.is_active
+                            ? `${c.company_name} will be marked inactive. Existing enquiries and records are preserved.`
+                            : `${c.company_name} will be marked active again.`,
+                          danger: c.is_active,
+                          confirmLabel: c.is_active ? "Deactivate" : "Activate",
+                          onConfirm: () => toggleActive(c),
+                        })
+                      }
+                      className={btnGhostSm}
+                      title={c.is_active ? "Deactivate customer" : "Activate customer"}
+                    >
+                      {c.is_active ? <Ban size={14} /> : <RotateCcw size={14} />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <Pagination
               page={page} setPage={setPage} totalPages={data.total_pages} totalItems={data.count}
               pageSize={pageSize} onPageSizeChange={setPageSize}

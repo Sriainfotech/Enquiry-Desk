@@ -4,7 +4,7 @@ import { useToast } from "../hooks/useToast";
 export default function ToastStack() {
   const { toasts, dismissToast } = useToast();
   return (
-    <div className="fixed top-4 right-4 z-[60] flex flex-col gap-2 w-80">
+    <div className="fixed top-4 right-4 left-4 sm:left-auto z-[60] flex flex-col gap-2 sm:w-80">
       {toasts.map((t) => (
         <div
           key={t.id}

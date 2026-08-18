@@ -9,7 +9,7 @@ import * as v from "../../utils/validators";
 import FormField from "../FormField";
 import SearchableSelect from "../SearchableSelect";
 import { btnPrimary, btnSecondary, cardCls, inputCls, inputErrCls, sectionTitleCls, textareaCls } from "../ui";
-import { BUSINESS_LINES, ENQUIRY_SOURCES, PRIORITIES, SALES_PERSONS } from "../../constants";
+import { BUSINESS_LINES, ENQUIRY_SOURCES, PRIORITIES } from "../../constants";
 
 export default function OverviewTab({ enquiry, customer, startEdit, onChanged }) {
   const navigate = useNavigate();
@@ -86,7 +86,7 @@ export default function OverviewTab({ enquiry, customer, startEdit, onChanged })
             <FormField label="Business Line">
               <SearchableSelect value={draft.business_line} onChange={(v) => setDraft((d) => ({ ...d, business_line: v }))} placeholder="Select business line" options={BUSINESS_LINES} clearable={false} />
             </FormField>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Enquiry Source">
                 <SearchableSelect value={draft.enquiry_source} onChange={(v) => setDraft((d) => ({ ...d, enquiry_source: v }))} placeholder="Select source" options={ENQUIRY_SOURCES} />
               </FormField>
@@ -94,10 +94,7 @@ export default function OverviewTab({ enquiry, customer, startEdit, onChanged })
                 <SearchableSelect value={draft.priority} onChange={(v) => setDraft((d) => ({ ...d, priority: v }))} placeholder="Select priority" options={PRIORITIES} clearable={false} />
               </FormField>
               <FormField label="Sales Person" error={errors.sales_person} counter={{ value: draft.sales_person.length, max: 50 }}>
-                <input className={errors.sales_person ? inputErrCls : inputCls} value={draft.sales_person} onChange={(e) => setDraft((d) => ({ ...d, sales_person: e.target.value }))} list="sales-person-suggestions" maxLength={50} />
-                <datalist id="sales-person-suggestions">
-                  {SALES_PERSONS.map((p) => <option key={p} value={p} />)}
-                </datalist>
+                <input className={errors.sales_person ? inputErrCls : inputCls} value={draft.sales_person} onChange={(e) => setDraft((d) => ({ ...d, sales_person: e.target.value }))} maxLength={50} />
               </FormField>
               <FormField label="Expected Closing" error={errors.expected_closing_date}>
                 <input type="date" className={errors.expected_closing_date ? inputErrCls : inputCls} value={draft.expected_closing_date} onChange={(e) => setDraft((d) => ({ ...d, expected_closing_date: e.target.value }))} min={enquiry.enquiry_date} />

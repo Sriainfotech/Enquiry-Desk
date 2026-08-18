@@ -54,6 +54,9 @@ const VALIDATORS = {
 };
 
 const digitsOnly = (max) => (raw) => raw.replace(/\D/g, "").slice(0, max);
+// City has no legitimate use for digits or symbols, so filter them out as the user
+// types rather than only catching it on blur (mirrors CITY_RE in utils/validators.js).
+const lettersOnly = (raw) => raw.replace(/[^A-Za-z '-]/g, "");
 
 export default function CustomerFormPage({ mode }) {
   const { id } = useParams();
@@ -160,7 +163,7 @@ export default function CustomerFormPage({ mode }) {
             <FormField className={g(3)} label="GST Number" error={errors.gst_number} hint="15 characters">
               <input className={cls("gst_number")} value={draft.gst_number} onChange={setUpper("gst_number")} onBlur={validateOnBlur("gst_number")} placeholder="36AAACA1234B1Z9" maxLength={15} />
             </FormField>
-            <FormField className={g(3)} label="PAN Number" error={errors.pan_number} hint="10 characters">
+            <FormField className={g(3)} label="PAN Number" error={errors.pan_number} hint="10 characters: AAAAA9999A">
               <input className={cls("pan_number")} value={draft.pan_number} onChange={setUpper("pan_number")} onBlur={validateOnBlur("pan_number")} placeholder="AAACA1234B" maxLength={10} />
             </FormField>
             <FormField className={g(5)} label="Company Type">
@@ -206,7 +209,7 @@ export default function CustomerFormPage({ mode }) {
               <input className={cls("address_line_2")} value={draft.address_line_2} onChange={set("address_line_2")} onBlur={validateOnBlur("address_line_2")} placeholder="Enter address line 2" maxLength={150} />
             </FormField>
             <FormField className={g(3)} label="City" required error={errors.city}>
-              <input className={cls("city")} value={draft.city} onChange={set("city")} onBlur={validateOnBlur("city")} placeholder="Enter city" maxLength={50} />
+              <input className={cls("city")} value={draft.city} onChange={set("city", lettersOnly)} onBlur={validateOnBlur("city")} placeholder="Enter city" maxLength={50} />
             </FormField>
             <FormField className={g(3)} label="State" required>
               <SearchableSelect value={draft.state} onChange={(val) => setDraft((d) => ({ ...d, state: val }))} placeholder="Select state" options={INDIAN_STATES} />

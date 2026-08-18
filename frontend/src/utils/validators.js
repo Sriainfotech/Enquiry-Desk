@@ -9,21 +9,29 @@ import { ATTACHMENT_EXTENSIONS, MAX_ATTACHMENT_SIZE_MB } from "../constants";
 const DOCUMENT_NUMBER_RE = /^[A-Za-z0-9\-_/]+$/;
 const MAX_DOCUMENT_NUMBER_LENGTH = 30;
 
-// Business names legitimately contain digits and punctuation ("3M India", "24/7 Solutions",
-// "H&R Block") — must start with a letter/digit so "   " and pure-punctuation strings fail.
-const COMPANY_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 .,&'()/-]*$/;
-// Human names: no digits, must start with a letter (rejects "John123", "12345").
-const PERSON_NAME_RE = /^[A-Za-z][A-Za-z .'-]*$/;
+// Business names legitimately contain digits and a specific, closed set of punctuation
+// ("3M India", "ABC & Sons", "ABC (India) Pvt. Ltd.") — comma is deliberately excluded;
+// must start with a letter/digit so "   " and pure-punctuation strings fail the anchor,
+// and companyName() below additionally requires at least one letter so purely-numeric/
+// punctuation values ("123456789", "----") still get rejected.
+const COMPANY_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 &.'()/-]*$/;
+const COMPANY_NAME_HAS_LETTER_RE = /[A-Za-z]/;
+// Human names: no digits, no period, must start with a letter (rejects "John123",
+// "12345") — letters, spaces, hyphen and apostrophe only.
+const PERSON_NAME_RE = /^[A-Za-z][A-Za-z '-]*$/;
 // Job titles legitimately contain digits/ampersands ("HR & Admin", "Level 2 Manager").
 const DESIGNATION_RE = /^[A-Za-z0-9][A-Za-z0-9 .&'-]*$/;
-const CITY_RE = /^[A-Za-z .'-]+$/;
+// City/state names: no digits, must start with a letter (rejects "12345", "-----")
+// — letters, spaces, hyphen and apostrophe only.
+const CITY_RE = /^[A-Za-z][A-Za-z '-]*$/;
 // Street addresses legitimately contain digits, slashes and "#" ("Flat #302, Road No. 10").
 const ADDRESS_RE = /^[A-Za-z0-9][A-Za-z0-9 .,/#()-]*$/;
 // Product/service names legitimately contain digits and light punctuation
 // ("Laptop 14-inch", "Cisco Switch 24 Port", "CCTV Camera 4MP").
 const ITEM_RE = /^[A-Za-z0-9][A-Za-z0-9 .,&/()-]*$/;
-// Sales person is free text (not tied to a User FK), but should read as a human name.
-const SALES_PERSON_RE = /^[A-Za-z][A-Za-z .'-]*$/;
+// Sales person is free text (not tied to a User FK), but should read as a human name —
+// letters, spaces, hyphen and apostrophe only, no period, no digits.
+const SALES_PERSON_RE = /^[A-Za-z][A-Za-z '-]*$/;
 const MOBILE_RE = /^[6-9][0-9]{9}$/;
 // Indian PIN codes never start with 0.
 const PINCODE_RE = /^[1-9][0-9]{5}$/;
@@ -43,16 +51,17 @@ export function companyName(value) {
   if (!v) return "Company name is required.";
   if (v.length < 2) return "Company name must be at least 2 characters.";
   if (v.length > 100) return "Company name cannot exceed 100 characters.";
-  if (!COMPANY_NAME_RE.test(v)) return "Company name contains characters that aren't allowed.";
+  if (!COMPANY_NAME_RE.test(v)) return "Company name can only contain letters, numbers, spaces, and & . - ' ( ) /";
+  if (!COMPANY_NAME_HAS_LETTER_RE.test(v)) return "Company name must contain at least one letter.";
   return null;
 }
 
 export function contactPerson(value) {
   const v = collapseSpaces(value || "");
-  if (!v) return "Contact person is required.";
-  if (v.length < 2) return "Contact person must be at least 2 characters.";
-  if (v.length > 50) return "Contact person cannot exceed 50 characters.";
-  if (!PERSON_NAME_RE.test(v)) return "Only letters, spaces, apostrophes and hyphens are allowed — no numbers.";
+  if (!v) return "Contact person name is required.";
+  if (v.length < 2) return "Contact person name must be at least 2 characters.";
+  if (v.length > 50) return "Contact person name cannot exceed 50 characters.";
+  if (!PERSON_NAME_RE.test(v)) return "Contact person name can contain only letters, spaces, hyphens and apostrophes.";
   return null;
 }
 
@@ -95,16 +104,18 @@ export function panNumber(value) {
 export function addressLine1(value) {
   const v = (value || "").trim();
   if (!v) return "Address line 1 is required.";
-  if (v.length < 5) return "Address line 1 must be at least 5 characters.";
+  if (v.length < 3) return "Address line 1 must be at least 3 characters.";
   if (v.length > 150) return "Address line 1 cannot exceed 150 characters.";
-  if (!ADDRESS_RE.test(v)) return "Address contains characters that aren't allowed.";
+  if (!ADDRESS_RE.test(v)) return "Address line 1 contains characters that aren't allowed.";
   return null;
 }
 
 export function addressLine2(value) {
   const v = (value || "").trim();
+  if (!v) return null;
+  if (v.length < 2) return "Address line 2 must be at least 2 characters.";
   if (v.length > 150) return "Address line 2 cannot exceed 150 characters.";
-  if (v && !ADDRESS_RE.test(v)) return "Address contains characters that aren't allowed.";
+  if (!ADDRESS_RE.test(v)) return "Address line 2 contains characters that aren't allowed.";
   return null;
 }
 
@@ -113,7 +124,7 @@ export function city(value) {
   if (!v) return "City is required.";
   if (v.length < 2) return "City must be at least 2 characters.";
   if (v.length > 50) return "City cannot exceed 50 characters.";
-  if (!CITY_RE.test(v)) return "Only letters, spaces, apostrophes and hyphens are allowed.";
+  if (!CITY_RE.test(v)) return "City can contain only letters, spaces, hyphens and apostrophes.";
   return null;
 }
 
@@ -155,10 +166,10 @@ export function optionalMinMaxLen(value, min, max, label) {
 
 export function requirementItem(value) {
   const v = collapseSpaces(value || "");
-  if (!v) return "Item is required.";
-  if (v.length < 2) return "Item must be at least 2 characters.";
-  if (v.length > 100) return "Item cannot exceed 100 characters.";
-  if (!ITEM_RE.test(v)) return "Item contains characters that aren't allowed.";
+  if (!v) return "Item / Service is required.";
+  if (v.length < 2) return "Item / Service must be at least 2 characters.";
+  if (v.length > 100) return "Item / Service cannot exceed 100 characters.";
+  if (!ITEM_RE.test(v)) return "Item / Service contains characters that aren't allowed.";
   return null;
 }
 

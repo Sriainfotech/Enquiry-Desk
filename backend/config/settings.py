@@ -5,7 +5,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+# override=True: this project's .env is the single source of truth for local config.
+# Without it, a stray OS-level environment variable of the same name (e.g. a leftover
+# Windows user/system variable) silently wins over .env with no visible error — which
+# is exactly what happened to JWT_SECRET_KEY here.
+load_dotenv(BASE_DIR / ".env", override=True)
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-dev-key-change-me")
 DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
@@ -119,6 +123,11 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # Without this, simplejwt falls back to signing with SECRET_KEY — a dedicated key
+    # lets the JWT signing secret be rotated independently and sized correctly (PyJWT
+    # warns below 32 bytes for HS256). Falls back to SECRET_KEY only if unset, so a
+    # missing .env value doesn't hard-crash the app — but it should always be set.
+    "SIGNING_KEY": os.environ.get("JWT_SECRET_KEY", SECRET_KEY),
 }
 
 CORS_ALLOWED_ORIGINS = [

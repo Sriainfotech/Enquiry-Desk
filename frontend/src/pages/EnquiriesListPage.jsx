@@ -90,7 +90,7 @@ function MoreFiltersPopover({ anchorRef, draft, setDraft, onApply, onClear, onCl
       style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
       className="z-[70] bg-white border border-slate-200 rounded-lg shadow-xl p-4"
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className={labelCls}>Enquiry Source</label>
           <SearchableSelect value={draft.enquiry_source} onChange={(v) => setField("enquiry_source", v)} placeholder="Any source" options={ENQUIRY_SOURCES} />
@@ -255,23 +255,23 @@ export default function EnquiriesListPage() {
 
       <div className={`${cardCls} p-4 mb-4`}>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <div className="relative flex-1 min-w-[160px] sm:max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input className={inputCls + " pl-9"} placeholder="Search by enquiry number, customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="w-[200px]">
+          <div className="w-full sm:w-[200px]">
             <AsyncCustomerSelect value={customerId} valueLabel={customerLabel} onChange={(id, label) => { setCustomerId(id); setCustomerLabel(label || ""); }} />
           </div>
-          <div className="w-[170px]">
+          <div className="w-full sm:w-[170px]">
             <SearchableSelect value={filters.business_line} onChange={(v) => setFilter("business_line", v)} placeholder="Business Line" options={BUSINESS_LINES} />
           </div>
-          <div className="w-[150px]">
+          <div className="w-full sm:w-[150px]">
             <SearchableSelect value={filters.status} onChange={(v) => setFilter("status", v)} placeholder="Status" options={ENQUIRY_STATUSES} />
           </div>
-          <div className="w-[130px]">
+          <div className="w-full sm:w-[130px]">
             <SearchableSelect value={filters.priority} onChange={(v) => setFilter("priority", v)} placeholder="Priority" options={PRIORITIES} />
           </div>
-          <div className="w-[180px]">
+          <div className="w-full sm:w-[180px]">
             <SearchableSelect value={ordering} onChange={setOrdering} clearable={false} searchable={false} placeholder="Sort" options={ENQUIRY_SORT_OPTIONS} />
           </div>
           <div ref={moreBtnRef}>

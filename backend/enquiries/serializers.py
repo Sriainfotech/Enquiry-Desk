@@ -148,8 +148,9 @@ def validate_free_text(value, label):
 # ("Laptop 14-inch", "Cisco Switch 24 Port", "CCTV Camera 4MP").
 ITEM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,&/()-]*$")
 # Sales person is free text (not tied to a User FK in the current schema), but should
-# still read as a human name, not arbitrary/garbage input.
-SALES_PERSON_RE = re.compile(r"^[A-Za-z][A-Za-z .'-]*$")
+# still read as a human name, not arbitrary/garbage input. Letters/spaces/hyphen/
+# apostrophe only — no period, no digits.
+SALES_PERSON_RE = re.compile(r"^[A-Za-z][A-Za-z '-]*$")
 
 # Discrete-count units can't have a fractional quantity ("2.5 Nos" doesn't mean anything);
 # "Meter" is a physical measurement and legitimately can (e.g. 2.5 meters of cable).
@@ -171,12 +172,14 @@ class RequirementSerializer(serializers.ModelSerializer):
 
     def validate_item(self, value):
         value = re.sub(r"\s+", " ", value.strip())
+        if not value:
+            raise serializers.ValidationError("Item / Service is required.")
         if len(value) < 2:
-            raise serializers.ValidationError("Item must be at least 2 characters.")
+            raise serializers.ValidationError("Item / Service must be at least 2 characters.")
         if len(value) > 100:
-            raise serializers.ValidationError("Item cannot exceed 100 characters.")
+            raise serializers.ValidationError("Item / Service cannot exceed 100 characters.")
         if not ITEM_RE.match(value):
-            raise serializers.ValidationError("Item contains characters that aren't allowed.")
+            raise serializers.ValidationError("Item / Service contains characters that aren't allowed.")
         return value
 
     def validate_description(self, value):
@@ -515,12 +518,14 @@ class RequirementWriteSerializer(serializers.ModelSerializer):
 
     def validate_item(self, value):
         value = re.sub(r"\s+", " ", value.strip())
+        if not value:
+            raise serializers.ValidationError("Item / Service is required.")
         if len(value) < 2:
-            raise serializers.ValidationError("Item must be at least 2 characters.")
+            raise serializers.ValidationError("Item / Service must be at least 2 characters.")
         if len(value) > 100:
-            raise serializers.ValidationError("Item cannot exceed 100 characters.")
+            raise serializers.ValidationError("Item / Service cannot exceed 100 characters.")
         if not ITEM_RE.match(value):
-            raise serializers.ValidationError("Item contains characters that aren't allowed.")
+            raise serializers.ValidationError("Item / Service contains characters that aren't allowed.")
         return value
 
     def validate_description(self, value):

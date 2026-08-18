@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -10,6 +10,27 @@ from config.pagination import StandardResultsSetPagination
 from .filters import CustomerFilter
 from .models import Customer
 from .serializers import CustomerSerializer
+
+
+def save_customer_or_conflict(serializer, **save_kwargs):
+    """The serializer's own validate_pan_number already rejects the common case, but
+    two concurrent requests can both pass that check before either has committed —
+    the database's UniqueConstraint is the actual final backstop for that race, and an
+    IntegrityError from it must still come back as a clean 400, not a generic 500."""
+    try:
+        with transaction.atomic():
+            serializer.save(**save_kwargs)
+        return None
+    except IntegrityError as exc:
+        if "pan_number" in str(exc).lower():
+            return Response(
+                {"detail": "Validation failed.", "errors": {"pan_number": ["Customer with this PAN number already exists."]}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {"detail": "Could not save this customer due to a data conflict. Please try again."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 SEARCH_FIELDS = [
     "company_name", "customer_code", "contact_person", "mobile", "email",
@@ -62,8 +83,9 @@ class CustomerListCreateAPIView(APIView):
     def post(self, request):
         serializer = CustomerSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        with transaction.atomic():
-            serializer.save(created_by=request.user)
+        conflict = save_customer_or_conflict(serializer, created_by=request.user)
+        if conflict:
+            return conflict
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -81,16 +103,18 @@ class CustomerDetailAPIView(APIView):
         customer = self.get_object(pk)
         serializer = CustomerSerializer(customer, data=request.data)
         serializer.is_valid(raise_exception=True)
-        with transaction.atomic():
-            serializer.save()
+        conflict = save_customer_or_conflict(serializer)
+        if conflict:
+            return conflict
         return Response(serializer.data)
 
     def patch(self, request, pk):
         customer = self.get_object(pk)
         serializer = CustomerSerializer(customer, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        with transaction.atomic():
-            serializer.save()
+        conflict = save_customer_or_conflict(serializer)
+        if conflict:
+            return conflict
         return Response(serializer.data)
 
     def delete(self, request, pk):

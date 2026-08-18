@@ -2,19 +2,42 @@ import { useEffect, useState } from "react";
 import { Check, Info, Loader2, Package, RotateCcw } from "lucide-react";
 import { patchQuotation, replaceRequirements } from "../../api/enquiries";
 import { useToast } from "../../hooks/useToast";
-import { messageFrom } from "../../utils/apiError";
+import { messageFrom, requirementRowErrorsFrom } from "../../utils/apiError";
+import * as v from "../../utils/validators";
 import RequirementsEditor, { requirementsTotal } from "../RequirementsEditor";
 import { btnGhostSm, btnPrimary, cardCls, sectionTitleCls } from "../ui";
+
+function validateRows(rows) {
+  const rowErrs = {};
+  rows.forEach((r) => {
+    const e = {};
+    const itemErr = v.requirementItem(r.item);
+    if (itemErr) e.item = itemErr;
+    const quantityErr = v.quantity(r.quantity, r.unit);
+    if (quantityErr) e.quantity = quantityErr;
+    const unitPriceErr = v.unitPrice(r.unit_price);
+    if (unitPriceErr) e.unit_price = unitPriceErr;
+    if (Object.keys(e).length) rowErrs[r.id ?? r.localId] = e;
+  });
+  return rowErrs;
+}
 
 export default function RequirementsTab({ enquiry, onChanged }) {
   const { showToast } = useToast();
   const [rows, setRows] = useState(enquiry.requirements);
+  const [rowErrors, setRowErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => setRows(enquiry.requirements), [enquiry.id, enquiry.requirements]);
 
   async function handleSave() {
+    const rowErrs = validateRows(rows);
+    setRowErrors(rowErrs);
+    if (Object.keys(rowErrs).length) {
+      showToast("Please resolve the highlighted issues before saving.", "error");
+      return;
+    }
     setSaving(true);
     try {
       await replaceRequirements(enquiry.id, rows.map((r) => ({
@@ -23,7 +46,13 @@ export default function RequirementsTab({ enquiry, onChanged }) {
       await onChanged();
       showToast("Requirements saved.", "success");
     } catch (err) {
-      showToast(messageFrom(err), "error");
+      const backendRowErrs = requirementRowErrorsFrom(err, rows);
+      if (Object.keys(backendRowErrs).length) {
+        setRowErrors(backendRowErrs);
+        showToast("Please resolve the highlighted issues before saving.", "error");
+      } else {
+        showToast(messageFrom(err), "error");
+      }
     } finally {
       setSaving(false);
     }
@@ -64,7 +93,7 @@ export default function RequirementsTab({ enquiry, onChanged }) {
           <Info size={13} /> The quotation for this enquiry has already been shared or accepted. Edit requirements with care — remember to recalculate the quotation value afterward.
         </div>
       )}
-      <RequirementsEditor requirements={rows} onChange={setRows} />
+      <RequirementsEditor requirements={rows} onChange={setRows} rowErrors={rowErrors} />
       <div className="flex justify-end mt-3">
         <button className={btnPrimary} onClick={handleSave} disabled={saving}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save Requirements

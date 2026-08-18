@@ -79,7 +79,7 @@ export default function EnquiryDetailPage() {
             </button>
             <p className="text-xs text-slate-400 mt-0.5">{enquiry.business_line} · Raised {formatDate(enquiry.enquiry_date)}</p>
           </div>
-          <div className="flex items-center gap-5">
+          <div className="flex items-center flex-wrap gap-x-5 gap-y-3">
             <div className="text-right">
               <p className="text-[11px] text-slate-400">Quotation Value</p>
               <p className="text-base font-bold text-slate-900">{enquiry.quotation.status === "Not Prepared" ? "Not Prepared" : formatCurrency(enquiry.quotation.total_value)}</p>

@@ -11,10 +11,10 @@ import RequirementsEditor, { newRequirementRow } from "../components/Requirement
 import SearchableSelect from "../components/SearchableSelect";
 import { btnGhost, btnGhostSm, btnPrimary, btnSecondary, cardCls, inputCls, inputErrCls, sectionTitleCls, textareaCls } from "../components/ui";
 import { useToast } from "../hooks/useToast";
-import { fieldErrorsFrom, messageFrom } from "../utils/apiError";
+import { fieldErrorsFrom, messageFrom, requirementRowErrorsFrom } from "../utils/apiError";
 import { todayStr } from "../utils/format";
 import * as v from "../utils/validators";
-import { BUSINESS_LINES, ENQUIRY_SOURCES, PRIORITIES, SALES_PERSONS } from "../constants";
+import { BUSINESS_LINES, ENQUIRY_SOURCES, PRIORITIES } from "../constants";
 
 const FORM_MAX_WIDTH = "max-w-[1400px]";
 // Full literal strings (not template-built) so Tailwind's JIT scanner can find them.
@@ -59,9 +59,12 @@ export default function EnquiryFormPage() {
     const rowErrs = {};
     requirements.forEach((r) => {
       const e = {};
-      if (v.requirementItem(r.item)) e.item = true;
-      if (v.quantity(r.quantity, r.unit)) e.quantity = true;
-      if (v.unitPrice(r.unit_price)) e.unit_price = true;
+      const itemErr = v.requirementItem(r.item);
+      if (itemErr) e.item = itemErr;
+      const quantityErr = v.quantity(r.quantity, r.unit);
+      if (quantityErr) e.quantity = quantityErr;
+      const unitPriceErr = v.unitPrice(r.unit_price);
+      if (unitPriceErr) e.unit_price = unitPriceErr;
       if (Object.keys(e).length) rowErrs[r.id ?? r.localId] = e;
     });
     setErrors({ ...errs, rowErrs });
@@ -92,7 +95,11 @@ export default function EnquiryFormPage() {
       navigate(`/enquiries/${enquiry.id}`);
     } catch (err) {
       const fieldErrs = fieldErrorsFrom(err);
-      showToast(Object.keys(fieldErrs).length ? "Please resolve the highlighted issues before saving." : messageFrom(err), "error");
+      const rowErrs = requirementRowErrorsFrom(err, requirements);
+      if (Object.keys(fieldErrs).length) setErrors((prev) => ({ ...prev, ...fieldErrs }));
+      if (Object.keys(rowErrs).length) setErrors((prev) => ({ ...prev, rowErrs: { ...prev.rowErrs, ...rowErrs } }));
+      const hasFieldErrors = Object.keys(fieldErrs).length || Object.keys(rowErrs).length;
+      showToast(hasFieldErrors ? "Please resolve the highlighted issues before saving." : messageFrom(err), "error");
     } finally {
       setSubmitting(false);
     }
@@ -146,10 +153,7 @@ export default function EnquiryFormPage() {
               <SearchableSelect value={priority} onChange={setPriority} placeholder="Select priority" options={PRIORITIES} clearable={false} />
             </FormField>
             <FormField className={g(6)} label="Sales Person" error={errors.salesPerson} counter={{ value: salesPerson.length, max: 50 }}>
-              <input className={inputCls} value={salesPerson} onChange={(e) => setSalesPerson(e.target.value)} placeholder="Enter sales person name" list="sales-person-suggestions" maxLength={50} />
-              <datalist id="sales-person-suggestions">
-                {SALES_PERSONS.map((p) => <option key={p} value={p} />)}
-              </datalist>
+              <input className={inputCls} value={salesPerson} onChange={(e) => setSalesPerson(e.target.value)} placeholder="Enter sales person name" maxLength={50} />
             </FormField>
             <FormField className={g(6)} label="Expected Closing Date" error={errors.expectedClosingDate}>
               <input type="date" className={inputCls} value={expectedClosingDate} onChange={(e) => setExpectedClosingDate(e.target.value)} min={enquiryDate} />

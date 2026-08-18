@@ -10,9 +10,6 @@ export const ENQUIRY_SOURCES = [
   "Existing Client", "Exhibition", "Social Media", "Other",
 ];
 export const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
-// Suggestions only (autocomplete) — sales_person is a free-text field on the backend,
-// not a fixed enum, since sales staff change more often than code should.
-export const SALES_PERSONS = ["Arjun Verma", "Kavya Reddy", "Manoj Iyer", "Divya Nair"];
 
 export const ENQUIRY_STATUSES = [
   "New", "In Progress", "Quotation Prepared", "Quotation Shared",

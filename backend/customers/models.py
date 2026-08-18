@@ -91,6 +91,19 @@ class Customer(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            # PAN is optional, so plain unique=True would break the moment a second
+            # customer was saved with a blank PAN (blank stores as "", not NULL, and
+            # two ""s collide under a normal unique index). The condition excludes
+            # blank values from the constraint entirely, so any number of customers
+            # can have no PAN, but any two with the SAME real PAN are rejected at the
+            # database level — the final backstop behind the serializer-level check.
+            models.UniqueConstraint(
+                fields=["pan_number"],
+                condition=~models.Q(pan_number=""),
+                name="unique_pan_number_when_set",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.customer_code:

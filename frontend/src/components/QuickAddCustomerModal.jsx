@@ -10,6 +10,7 @@ import SearchableSelect from "./SearchableSelect";
 import { btnPrimary, btnSecondary, inputCls, inputErrCls } from "./ui";
 
 const digitsOnly = (max) => (raw) => raw.replace(/\D/g, "").slice(0, max);
+const lettersOnly = (raw) => raw.replace(/[^A-Za-z '-]/g, "");
 
 const VALIDATORS = {
   company_name: v.companyName,
@@ -83,7 +84,7 @@ export default function QuickAddCustomerModal({ onClose, onCreated, showToast, p
   return (
     <Modal title="Add New Customer" description="This customer will be added to your master list and selected for this enquiry." onClose={onClose} width="max-w-xl">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Company Name" required error={errors.company_name} counter={{ value: draft.company_name.length, max: 100 }}>
             <input className={cls("company_name")} value={draft.company_name} onChange={set("company_name")} onBlur={validateOnBlur("company_name")} placeholder="Enter company name" autoFocus maxLength={100} />
           </FormField>
@@ -91,7 +92,7 @@ export default function QuickAddCustomerModal({ onClose, onCreated, showToast, p
             <input className={cls("gst_number")} value={draft.gst_number} onChange={setUpper("gst_number")} onBlur={validateOnBlur("gst_number")} maxLength={15} />
           </FormField>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Contact Person" required error={errors.contact_person}>
             <input className={cls("contact_person")} value={draft.contact_person} onChange={set("contact_person")} onBlur={validateOnBlur("contact_person")} maxLength={50} />
           </FormField>
@@ -105,9 +106,9 @@ export default function QuickAddCustomerModal({ onClose, onCreated, showToast, p
         <FormField label="Address Line 1" required error={errors.address_line_1} counter={{ value: draft.address_line_1.length, max: 150 }}>
           <input className={cls("address_line_1")} value={draft.address_line_1} onChange={set("address_line_1")} onBlur={validateOnBlur("address_line_1")} placeholder="Enter address" maxLength={150} />
         </FormField>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <FormField label="City" required error={errors.city}>
-            <input className={cls("city")} value={draft.city} onChange={set("city")} onBlur={validateOnBlur("city")} maxLength={50} />
+            <input className={cls("city")} value={draft.city} onChange={set("city", lettersOnly)} onBlur={validateOnBlur("city")} maxLength={50} />
           </FormField>
           <FormField label="State" required error={errors.state}>
             <SearchableSelect value={draft.state} onChange={(val) => { setDraft((d) => ({ ...d, state: val })); setErrors((prev) => { const n = { ...prev }; delete n.state; return n; }); }} placeholder="Select state" options={INDIAN_STATES} />

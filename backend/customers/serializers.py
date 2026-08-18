@@ -6,14 +6,21 @@ from rest_framework import serializers
 
 from .models import Customer
 
-# Business names legitimately contain digits and punctuation ("3M India", "24/7 Solutions",
-# "H&R Block") — must start with a letter/digit so "   " and pure-punctuation strings fail.
-COMPANY_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,&'()/-]*$")
-# Human names: no digits, must start with a letter (rejects "John123", "12345").
-PERSON_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z .'-]*$")
+# Business names legitimately contain digits and a specific, closed set of punctuation
+# ("3M India", "ABC & Sons", "ABC (India) Pvt. Ltd.") — comma is deliberately excluded
+# (not in the approved character set); must start with a letter/digit so "   " and
+# pure-punctuation strings fail the anchor, and validate_company_name below additionally
+# requires at least one letter so purely-numeric/punctuation values still get rejected.
+COMPANY_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 &.'()/-]*$")
+COMPANY_NAME_HAS_LETTER_RE = re.compile(r"[A-Za-z]")
+# Human names: no digits, no period, must start with a letter (rejects "John123",
+# "12345") — letters, spaces, hyphen and apostrophe only.
+PERSON_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z '-]*$")
 # Job titles legitimately contain digits/ampersands ("HR & Admin", "Level 2 Manager").
 DESIGNATION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&'-]*$")
-CITY_RE = re.compile(r"^[A-Za-z .'-]+$")
+# City/state names: no digits, must start with a letter (rejects "12345", "-----")
+# — letters, spaces, hyphen and apostrophe only.
+CITY_RE = re.compile(r"^[A-Za-z][A-Za-z '-]*$")
 # Street addresses legitimately contain digits, slashes and "#" ("Flat #302, Road No. 10").
 ADDRESS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,/#()-]*$")
 MOBILE_RE = re.compile(r"^[6-9][0-9]{9}$")
@@ -65,7 +72,7 @@ class CustomerSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(max_length=254)
     alternate_email = serializers.EmailField(required=False, allow_blank=True, max_length=254)
 
-    address_line_1 = serializers.CharField(min_length=5, max_length=150)
+    address_line_1 = serializers.CharField(min_length=3, max_length=150)
     address_line_2 = serializers.CharField(required=False, allow_blank=True, max_length=150)
     city = serializers.CharField(min_length=2, max_length=50)
     pincode = serializers.CharField(max_length=6)
@@ -88,16 +95,24 @@ class CustomerSerializer(serializers.ModelSerializer):
         value = _collapse_spaces(value)
         if len(value) < 2:
             raise serializers.ValidationError("Company name must be at least 2 characters.")
+        if len(value) > 100:
+            raise serializers.ValidationError("Company name cannot exceed 100 characters.")
         if not COMPANY_NAME_RE.match(value):
-            raise serializers.ValidationError("Company name contains characters that aren't allowed.")
+            raise serializers.ValidationError(
+                "Company name can only contain letters, numbers, spaces, and & . - ' ( ) /"
+            )
+        if not COMPANY_NAME_HAS_LETTER_RE.search(value):
+            raise serializers.ValidationError("Company name must contain at least one letter.")
         return value
 
     def validate_contact_person(self, value):
         value = _collapse_spaces(value)
         if len(value) < 2:
-            raise serializers.ValidationError("Contact person must be at least 2 characters.")
+            raise serializers.ValidationError("Contact person name must be at least 2 characters.")
+        if len(value) > 50:
+            raise serializers.ValidationError("Contact person name cannot exceed 50 characters.")
         if not PERSON_NAME_RE.match(value):
-            raise serializers.ValidationError("Contact person can only contain letters, spaces, apostrophes and hyphens — no numbers.")
+            raise serializers.ValidationError("Contact person name can contain only letters, spaces, hyphens and apostrophes.")
         return value
 
     def validate_designation(self, value):
@@ -140,8 +155,15 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     def validate_pan_number(self, value):
         value = value.strip().upper()
-        if value and (len(value) != 10 or not PAN_RE.match(value)):
+        if not value:
+            return value
+        if len(value) != 10 or not PAN_RE.match(value):
             raise serializers.ValidationError("Enter a valid 10-character PAN number.")
+        qs = Customer.objects.filter(pan_number=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Customer with this PAN number already exists.")
         return value
 
     def validate_website(self, value):
@@ -152,15 +174,23 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     def validate_address_line_1(self, value):
         value = value.strip()
-        if len(value) < 5:
-            raise serializers.ValidationError("Address line 1 must be at least 5 characters.")
+        if len(value) < 3:
+            raise serializers.ValidationError("Address line 1 must be at least 3 characters.")
+        if len(value) > 150:
+            raise serializers.ValidationError("Address line 1 cannot exceed 150 characters.")
         if not ADDRESS_RE.match(value):
             raise serializers.ValidationError("Address line 1 contains characters that aren't allowed.")
         return value
 
     def validate_address_line_2(self, value):
         value = value.strip()
-        if value and not ADDRESS_RE.match(value):
+        if not value:
+            return value
+        if len(value) < 2:
+            raise serializers.ValidationError("Address line 2 must be at least 2 characters.")
+        if len(value) > 150:
+            raise serializers.ValidationError("Address line 2 cannot exceed 150 characters.")
+        if not ADDRESS_RE.match(value):
             raise serializers.ValidationError("Address line 2 contains characters that aren't allowed.")
         return value
 
@@ -168,8 +198,10 @@ class CustomerSerializer(serializers.ModelSerializer):
         value = _collapse_spaces(value)
         if len(value) < 2:
             raise serializers.ValidationError("City must be at least 2 characters.")
+        if len(value) > 50:
+            raise serializers.ValidationError("City cannot exceed 50 characters.")
         if not CITY_RE.match(value):
-            raise serializers.ValidationError("City can only contain letters, spaces, apostrophes and hyphens.")
+            raise serializers.ValidationError("City can contain only letters, spaces, hyphens and apostrophes.")
         return value
 
     def validate_pincode(self, value):

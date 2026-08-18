@@ -16,7 +16,7 @@ export default function DashboardDateFilter({ preset, dateFrom, dateTo, onChange
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <Calendar size={14} className="text-slate-400 flex-shrink-0" />
-      <div className="w-[160px]">
+      <div className="w-[160px] max-w-full">
         <SearchableSelect
           value={preset}
           onChange={(v) => onChange({ preset: v, dateFrom, dateTo })}
@@ -29,7 +29,7 @@ export default function DashboardDateFilter({ preset, dateFrom, dateTo, onChange
         <>
           <input
             type="date"
-            className={inputCls + " w-[150px]"}
+            className={inputCls + " w-[calc(50%-40px)] sm:w-[150px]"}
             value={dateFrom}
             max={dateTo || undefined}
             onChange={(e) => onChange({ preset, dateFrom: e.target.value, dateTo })}
@@ -37,7 +37,7 @@ export default function DashboardDateFilter({ preset, dateFrom, dateTo, onChange
           <span className="text-xs text-slate-400">to</span>
           <input
             type="date"
-            className={inputCls + " w-[150px]"}
+            className={inputCls + " w-[calc(50%-40px)] sm:w-[150px]"}
             value={dateTo}
             min={dateFrom || undefined}
             onChange={(e) => onChange({ preset, dateFrom, dateTo: e.target.value })}

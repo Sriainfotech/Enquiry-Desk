@@ -14,7 +14,7 @@ import { PAYMENT_STATUSES } from "../../constants";
 import InternalDocumentAttachment from "./InternalDocumentAttachment";
 
 // Full literal strings (not template-built) so Tailwind's JIT scanner can find them.
-const FIELD_SPAN = "col-span-6 sm:col-span-4 lg:col-span-3";
+const FIELD_SPAN = "col-span-12 sm:col-span-6 lg:col-span-3";
 const subHeadingCls = "text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3";
 // Same height/padding/radius as a real input so read-only (system-set/calculated) values
 // line up exactly with editable fields in the grid — just visually muted, not a broken input.
