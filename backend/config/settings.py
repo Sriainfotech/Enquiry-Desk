@@ -150,3 +150,18 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Vantage <no-reply@van
 # How long a password-reset link stays valid, in seconds (Django's built-in setting,
 # consumed by PasswordResetTokenGenerator). Defaults to 1 hour.
 PASSWORD_RESET_TIMEOUT = int(os.environ.get("PASSWORD_RESET_TIMEOUT_SECONDS", 3600))
+
+import os
+from pathlib import Path
+
+SECRET_KEY = os.environ.get("SECRET_KEY")
+
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME"),
+        # OR use DATABASE_URL with dj-database-url if your project is configured that way
+    }
+}
