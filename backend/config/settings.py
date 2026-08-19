@@ -153,15 +153,15 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Vantage <no-reply@van
 # consumed by PasswordResetTokenGenerator). Defaults to 1 hour.
 PASSWORD_RESET_TIMEOUT = int(os.environ.get("PASSWORD_RESET_TIMEOUT_SECONDS", 3600))
 
-import os
-from pathlib import Path
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
-DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+# import os
+# from pathlib import Path
+# SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+# DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("DB_NAME"),
-        # OR use DATABASE_URL with dj-database-url if your project is configured that way
-    }
-}
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": os.environ.get("DB_NAME"),
+#         # OR use DATABASE_URL with dj-database-url if your project is configured that way
+#     }
+# }
