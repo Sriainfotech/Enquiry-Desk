@@ -43,6 +43,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -100,6 +101,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -153,9 +155,7 @@ PASSWORD_RESET_TIMEOUT = int(os.environ.get("PASSWORD_RESET_TIMEOUT_SECONDS", 36
 
 import os
 from pathlib import Path
-
-SECRET_KEY = os.environ.get("SECRET_KEY")
-
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
 DATABASES = {
