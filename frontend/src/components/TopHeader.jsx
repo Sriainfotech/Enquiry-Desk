@@ -172,7 +172,7 @@ export default function TopHeader({ dashboard, onOpenMenu }) {
             <div className="absolute right-0 z-30 mt-2 w-56 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-md shadow-lg py-2">
               <div className="px-4 py-2 border-b border-slate-100">
                 <p className="text-sm font-semibold text-slate-800">{user?.full_name || user?.username}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{user?.email || "Team workspace · Vantage"}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{user?.email || "Team workspace · Sria Infotech"}</p>
               </div>
               <button
                 onClick={() => { setUserOpen(false); logout(); }}
