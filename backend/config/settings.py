@@ -69,16 +69,35 @@ ASGI_APPLICATION = "config.asgi.application"
 
 # DB_ENGINE=sqlite is the local-dev default (zero setup). Switch to DB_ENGINE=postgres
 # for anything resembling production — the model layer doesn't change either way.
-if os.environ.get("DB_ENGINE", "sqlite") == "postgres":
+# if os.environ.get("DB_ENGINE", "sqlite") == "postgres":
+#     DATABASES = {
+#         "default": {
+#             "ENGINE": "django.db.backends.postgresql",
+#             "NAME": os.environ.get("DB_NAME", "customer_enquiry_desk"),
+#             "USER": os.environ.get("DB_USER", "postgres"),
+#             "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+#             "HOST": os.environ.get("DB_HOST", "localhost"),
+#             "PORT": os.environ.get("DB_PORT", "5432"),
+#         }
+#     }
+# else:
+#     DATABASES = {
+#         "default": {
+#             "ENGINE": "django.db.backends.sqlite3",
+#             "NAME": BASE_DIR / "db.sqlite3",
+#         }
+#     }
+import dj_database_url
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if DATABASE_URL:
     DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.environ.get("DB_NAME", "customer_enquiry_desk"),
-            "USER": os.environ.get("DB_USER", "postgres"),
-            "PASSWORD": os.environ.get("DB_PASSWORD", ""),
-            "HOST": os.environ.get("DB_HOST", "localhost"),
-            "PORT": os.environ.get("DB_PORT", "5432"),
-        }
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
 else:
     DATABASES = {
