@@ -38,7 +38,7 @@ export default function ForgotPasswordPage() {
         <div className="flex items-center gap-2.5 justify-center mb-6">
           <div className="w-9 h-9 rounded-md bg-teal-600 flex items-center justify-center font-bold text-white text-sm">V</div>
           <div>
-            <p className="text-slate-900 font-bold text-sm tracking-wide leading-none">VANTAGE</p>
+            <p className="text-slate-900 font-bold text-sm tracking-wide leading-none">Sria Infotech</p>
             <p className="text-slate-400 text-[11px] leading-none mt-1">Customer &amp; Enquiry Desk</p>
           </div>
         </div>
