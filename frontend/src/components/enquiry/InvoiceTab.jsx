@@ -20,19 +20,37 @@ const subHeadingCls = "text-xs font-semibold text-slate-500 uppercase tracking-w
 // line up exactly with editable fields in the grid — just visually muted, not a broken input.
 const readOnlyCls = "w-full h-[38px] px-3 border border-slate-200 rounded-md bg-slate-50 text-sm text-slate-700 flex items-center";
 
+// Payment Status only ever moves forward (Not Paid -> Partially Paid -> Paid); Paid is
+// terminal. The backend independently enforces this — these option lists are just UX,
+// so a user is never even offered a backward choice in the first place. "Overdue" is a
+// separate not-yet-settled marker outside this forward-only chain, so it isn't restricted.
+function paymentStatusOptions(current) {
+  if (current === "Not Paid") return ["Not Paid", "Partially Paid", "Paid"];
+  if (current === "Partially Paid") return ["Partially Paid", "Paid"];
+  if (current === "Paid") return ["Paid"];
+  return PAYMENT_STATUSES;
+}
+
 export default function InvoiceTab({ enquiry, onChanged }) {
   const { showToast } = useToast();
   const inv = enquiry.invoice;
   const o = enquiry.order;
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState({ invoice_number: inv.invoice_number || "", due_date: inv.due_date || "", remarks: inv.remarks || "" });
+  const [draft, setDraft] = useState({
+    invoice_number: inv.invoice_number || "", due_date: inv.due_date || "", remarks: inv.remarks || "",
+    amount_paid: inv.amount_paid,
+  });
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    setDraft({ invoice_number: inv.invoice_number || "", due_date: inv.due_date || "", remarks: inv.remarks || "" });
-  }, [inv.invoice_number, inv.due_date, inv.remarks]);
+    setDraft({
+      invoice_number: inv.invoice_number || "", due_date: inv.due_date || "", remarks: inv.remarks || "",
+      amount_paid: inv.amount_paid,
+    });
+  }, [inv.invoice_number, inv.due_date, inv.remarks, inv.amount_paid]);
 
   const canGenerate = ["Confirmed", "Partially Confirmed", "Completed"].includes(o.status) && inv.status === "Not Generated";
+  const paymentLocked = inv.payment_status === "Paid";
 
   async function withBusy(fn, successMessage) {
     setBusy(true);
@@ -50,7 +68,13 @@ export default function InvoiceTab({ enquiry, onChanged }) {
 
   const generate = () => withBusy(() => generateInvoice(enquiry.id, {}), "Invoice generated.").catch(() => {});
   const setInvoiceStatus = (newStatus, label) => withBusy(() => patchInvoice(enquiry.id, { status: newStatus }), label).catch(() => {});
-  const setPaymentStatus = (newStatus) => withBusy(() => patchInvoice(enquiry.id, { payment_status: newStatus }), "Payment status updated.").catch(() => {});
+
+  function setPaymentStatus(newStatus) {
+    // Moving to Paid means paid in full — send the matching amount ourselves so the
+    // user never has to type it in manually; the backend re-confirms this regardless.
+    const body = newStatus === "Paid" ? { payment_status: newStatus, amount_paid: inv.value } : { payment_status: newStatus };
+    return withBusy(() => patchInvoice(enquiry.id, body), "Payment status updated.").catch(() => {});
+  }
 
   async function commitField(field, value) {
     setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
@@ -119,11 +143,39 @@ export default function InvoiceTab({ enquiry, onChanged }) {
                 min={inv.invoice_date || undefined}
               />
             </FormField>
-            <FormField className={FIELD_SPAN} label="Payment Status">
-              <SearchableSelect value={inv.payment_status} onChange={setPaymentStatus} options={PAYMENT_STATUSES} clearable={false} searchable={false} />
+            <FormField
+              className={FIELD_SPAN} label="Payment Status"
+              hint={paymentLocked ? "Paid invoices cannot be moved back to an earlier payment status." : undefined}
+            >
+              {paymentLocked ? (
+                <div className={readOnlyCls + " font-semibold text-slate-900"}>Paid</div>
+              ) : (
+                <SearchableSelect value={inv.payment_status} onChange={setPaymentStatus} options={paymentStatusOptions(inv.payment_status)} clearable={false} searchable={false} />
+              )}
             </FormField>
             <FormField className={FIELD_SPAN} label="Payment Date">
               <div className={readOnlyCls}>{inv.payment_date ? formatDate(inv.payment_date) : "—"}</div>
+            </FormField>
+            <FormField className={FIELD_SPAN} label="Amount Paid" error={errors.amount_paid}>
+              {paymentLocked ? (
+                <div className={readOnlyCls + " font-semibold text-slate-900"}>{formatCurrency(inv.amount_paid)}</div>
+              ) : (
+                <input
+                  type="number" min="0" max={inv.value}
+                  className={errors.amount_paid ? inputErrCls : inputCls}
+                  value={draft.amount_paid}
+                  onChange={(e) => setDraft((d) => ({ ...d, amount_paid: e.target.value }))}
+                  onBlur={(e) => {
+                    if (Number(e.target.value) === Number(inv.amount_paid)) return;
+                    const err = v.amountPaid(e.target.value, inv.value);
+                    if (err) { setErrors((prev) => ({ ...prev, amount_paid: err })); return; }
+                    commitField("amount_paid", Number(e.target.value));
+                  }}
+                />
+              )}
+            </FormField>
+            <FormField className={FIELD_SPAN} label="Outstanding Amount">
+              <div className={readOnlyCls}>{formatCurrency(Math.max(0, Number(inv.value) - Number(inv.amount_paid)))}</div>
             </FormField>
           </div>
 

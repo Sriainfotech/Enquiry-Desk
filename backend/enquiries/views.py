@@ -8,7 +8,7 @@ from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -576,8 +576,10 @@ class OrderAPIView(APIView):
             po_date = parse_required_date(request.data.get("po_date") or today, "PO Date")
         except FieldValidationError as exc:
             return api_error(exc.message)
-        if po_date > today:
-            return api_error("PO Date cannot be later than the Order Date.")
+        # The PO is created externally, often before this tracking application even
+        # records the enquiry/quotation — only a future date is actually invalid.
+        if po_date > timezone.localdate():
+            return api_error("PO Date cannot be a future date.")
 
         with transaction.atomic():
             # No order_number here — the actual order/PO is created in a separate
@@ -628,6 +630,18 @@ INVOICE_TRANSITIONS = {
     "Sent": {"Cancelled": "Invoice Cancelled"},
 }
 
+# Payment Status follows Not Paid -> Partially Paid -> Paid; Paid is a terminal state
+# that can never move backward. "Overdue" is a separate not-yet-settled marker rather
+# than part of this forward-only chain, so it isn't restricted by this rule.
+def payment_status_backward_error(current, requested):
+    if current == requested:
+        return None
+    if current == "Paid":
+        return "Paid invoices cannot be moved to an earlier payment status."
+    if current == "Partially Paid" and requested == "Not Paid":
+        return "Payment Status cannot move back from Partially Paid to Not Paid."
+    return None
+
 
 class InvoiceAPIView(APIView):
     def get_enquiry(self, pk):
@@ -670,26 +684,69 @@ class InvoiceAPIView(APIView):
                 invoice.save(update_fields=["status"])
                 log_activity(enquiry, label, user=request.user)
 
-            if "payment_status" in data and data["payment_status"] != invoice.payment_status:
-                new_payment_status = data["payment_status"]
-                valid_payment_statuses = dict(Invoice.PAYMENT_STATUS_CHOICES)
-                if new_payment_status not in valid_payment_statuses:
-                    return api_error(
-                        f"Payment Status must be one of: {', '.join(valid_payment_statuses)}."
-                    )
-                invoice.payment_status = new_payment_status
-                if new_payment_status == "Paid":
-                    invoice.payment_date = date.today()
-                    label = "Payment Received in Full"
-                else:
-                    # Only a fully-Paid invoice carries a payment date — any other
-                    # status means the balance (or all of it) is still outstanding.
-                    invoice.payment_date = None
-                    label = "Payment Partially Received" if new_payment_status == "Partially Paid" else f"Payment Status Updated to {new_payment_status}"
-                invoice.save(update_fields=["payment_status", "payment_date"])
-                log_activity(enquiry, label, user=request.user)
+            status_changing = "payment_status" in data and data["payment_status"] != invoice.payment_status
+            amount_changing = "amount_paid" in data
+            if status_changing or amount_changing:
+                current_status = invoice.payment_status
+                new_payment_status = data["payment_status"] if status_changing else current_status
 
-            editable_data = {k: v for k, v in data.items() if k not in ("status", "payment_status")}
+                if status_changing:
+                    valid_payment_statuses = dict(Invoice.PAYMENT_STATUS_CHOICES)
+                    if new_payment_status not in valid_payment_statuses:
+                        raise serializers.ValidationError(
+                            {"payment_status": [f"Payment Status must be one of: {', '.join(valid_payment_statuses)}."]}
+                        )
+                    backward_error = payment_status_backward_error(current_status, new_payment_status)
+                    if backward_error:
+                        raise serializers.ValidationError({"payment_status": [backward_error]})
+
+                if new_payment_status == "Paid":
+                    # A Paid invoice is, by definition, paid in full — never trust a
+                    # client-supplied amount for it, just confirm it isn't contradicted.
+                    if amount_changing:
+                        try:
+                            requested_amount = parse_money(data["amount_paid"], "Amount Paid")
+                        except FieldValidationError as exc:
+                            raise serializers.ValidationError({"amount_paid": [exc.message]})
+                        if requested_amount != invoice.value:
+                            raise serializers.ValidationError(
+                                {"amount_paid": ["Amount Paid must equal Invoice Value for a paid invoice."]}
+                            )
+                    if status_changing:
+                        invoice.amount_paid = invoice.value
+                        invoice.payment_date = date.today()
+                        invoice.payment_status = new_payment_status
+                        invoice.save(update_fields=["payment_status", "payment_date", "amount_paid"])
+                        log_activity(enquiry, "Payment Received in Full", user=request.user)
+                    # else: status was already Paid and isn't changing — amount_paid
+                    # was already confirmed above to equal the invoice value, so there
+                    # is nothing left to persist.
+                else:
+                    if amount_changing:
+                        try:
+                            requested_amount = parse_money(data["amount_paid"], "Amount Paid")
+                        except FieldValidationError as exc:
+                            raise serializers.ValidationError({"amount_paid": [exc.message]})
+                        if requested_amount > invoice.value:
+                            raise serializers.ValidationError(
+                                {"amount_paid": ["Amount Paid cannot exceed Invoice Value."]}
+                            )
+                        invoice.amount_paid = requested_amount
+                    elif status_changing and new_payment_status == "Not Paid":
+                        invoice.amount_paid = 0
+
+                    if status_changing:
+                        # Only a fully-Paid invoice carries a payment date — any other
+                        # status means the balance (or all of it) is still outstanding.
+                        invoice.payment_date = None
+                        invoice.payment_status = new_payment_status
+                        label = "Payment Partially Received" if new_payment_status == "Partially Paid" else f"Payment Status Updated to {new_payment_status}"
+                        invoice.save(update_fields=["payment_status", "payment_date", "amount_paid"])
+                        log_activity(enquiry, label, user=request.user)
+                    elif amount_changing:
+                        invoice.save(update_fields=["amount_paid"])
+
+            editable_data = {k: v for k, v in data.items() if k not in ("status", "payment_status", "amount_paid")}
             if editable_data:
                 serializer = InvoiceSerializer(invoice, data=editable_data, partial=True)
                 serializer.is_valid(raise_exception=True)

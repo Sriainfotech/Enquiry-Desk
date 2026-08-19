@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
@@ -345,11 +346,16 @@ class OrderSerializer(serializers.ModelSerializer):
     def validate_remarks(self, value):
         return validate_free_text(value.strip(), "Remarks")
 
+    def validate_po_date(self, value):
+        # The PO is created externally, often before this tracking application even
+        # records the enquiry/quotation — only a future date is actually invalid.
+        if value and value > timezone.localdate():
+            raise serializers.ValidationError("PO Date cannot be a future date.")
+        return value
+
     def validate(self, attrs):
         po_date = attrs.get("po_date")
         order_date = self.instance.order_date if self.instance else None
-        if po_date and order_date and po_date > order_date:
-            raise serializers.ValidationError({"po_date": "PO Date cannot be later than the Order Date."})
 
         expected_delivery = attrs.get("expected_delivery_date")
         reference_date = order_date or po_date
@@ -371,9 +377,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
         model = Invoice
         fields = [
             "invoice_number", "invoice_date", "value", "status", "payment_status",
-            "due_date", "payment_date", "remarks",
+            "amount_paid", "due_date", "payment_date", "remarks",
         ]
-        read_only_fields = ["invoice_date", "value", "status", "payment_status", "payment_date"]
+        # amount_paid is written exclusively through InvoiceAPIView.patch's dedicated
+        # payment-status handling (same as payment_status/payment_date) so it can be
+        # validated against the current payment_status, not through a plain PATCH.
+        read_only_fields = ["invoice_date", "value", "status", "payment_status", "amount_paid", "payment_date"]
 
     def validate_invoice_number(self, value):
         return normalize_optional_number(value, "Invoice Number")

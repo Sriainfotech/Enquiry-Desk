@@ -146,6 +146,9 @@ class Invoice(models.Model):
     value = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Not Generated", db_index=True)
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="Not Paid", db_index=True)
+    # Always kept consistent with payment_status by the view layer (never trusted
+    # verbatim from the client) — equals `value` once Paid, 0 once Not Paid.
+    amount_paid = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     due_date = models.DateField(null=True, blank=True)
     payment_date = models.DateField(null=True, blank=True)
     remarks = models.TextField(blank=True)

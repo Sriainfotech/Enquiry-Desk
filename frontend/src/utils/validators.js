@@ -191,6 +191,17 @@ export function enquiryDate(value) {
   return null;
 }
 
+// PO Date belongs to an externally created Purchase Order — it may legitimately
+// predate this application's own records (quotation, enquiry, order), so it is never
+// compared against them. The only real constraint is that it can't be in the future.
+export function poDate(value) {
+  const v = (value || "").trim();
+  if (!v) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  if (v > today) return "PO Date cannot be a future date.";
+  return null;
+}
+
 // Optional external document number (Quotation/Order/PO/Invoice) — blank is valid
 // (the field just isn't known yet), but a value that IS entered must match the real
 // external numbering format: letters, digits, hyphen, slash, underscore only.
@@ -261,6 +272,17 @@ export function optionalMoney(value, label) {
   if (Number.isNaN(n)) return `${label} must be a valid number.`;
   if (n < 0) return `${label} cannot be negative.`;
   if (n > 999999999.99) return `${label} is too large.`;
+  return null;
+}
+
+// Amount Paid can never exceed the Invoice Value. The Paid-invariant (Amount Paid
+// must exactly equal Invoice Value) depends on the current payment status, which
+// this has no access to — that specific check is backend-only, enforced authoritatively.
+export function amountPaid(value, invoiceValue) {
+  const n = Number(value);
+  if (value === "" || value === null || Number.isNaN(n)) return "Amount Paid is required.";
+  if (n < 0) return "Amount Paid cannot be negative.";
+  if (n > Number(invoiceValue)) return "Amount Paid cannot exceed Invoice Value.";
   return null;
 }
 

@@ -60,7 +60,8 @@ export default function OrderTab({ enquiry, onChanged }) {
     const errs = {};
     const poNumberErr = v.documentNumber(poNumber, "PO Number");
     if (poNumberErr) errs.po_number = poNumberErr;
-    if (poDate && poDate > todayStr()) errs.po_date = "PO Date cannot be later than today.";
+    const poDateErr = v.poDate(poDate);
+    if (poDateErr) errs.po_date = poDateErr;
     setConvertErrors(errs);
     if (Object.keys(errs).length) return;
     try {
@@ -171,8 +172,14 @@ export default function OrderTab({ enquiry, onChanged }) {
             <FormField className={FIELD_SPAN} label="PO Date" error={errors.po_date}>
               <input
                 type="date" className={errors.po_date ? inputErrCls : inputCls} value={draft.po_date}
+                max={todayStr()}
                 onChange={(e) => setDraft((d) => ({ ...d, po_date: e.target.value }))}
-                onBlur={(e) => e.target.value !== o.po_date && commitField("po_date", e.target.value)}
+                onBlur={(e) => {
+                  if (e.target.value === o.po_date) return;
+                  const err = v.poDate(e.target.value);
+                  if (err) { setErrors((prev) => ({ ...prev, po_date: err })); return; }
+                  commitField("po_date", e.target.value);
+                }}
               />
             </FormField>
             <FormField className={FIELD_SPAN} label="Order Value">
