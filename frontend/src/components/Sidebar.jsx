@@ -38,7 +38,7 @@ export default function Sidebar({ mobileOpen, onCloseMobile }) {
     <>
       <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80 flex-shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-md bg-teal-500 flex items-center justify-center font-bold text-slate-900 text-sm flex-shrink-0">V</div>
+          <div className="w-8 h-8 rounded-md bg-teal-500 flex items-center justify-center font-bold text-slate-900 text-sm flex-shrink-0">S</div>
           <div className="min-w-0">
             <p className="text-white font-bold text-[13px] tracking-wide leading-none">Sria Infotech</p>
             <p className="text-slate-500 text-[10px] leading-none mt-1 truncate">Customer &amp; Enquiry Desk</p>
